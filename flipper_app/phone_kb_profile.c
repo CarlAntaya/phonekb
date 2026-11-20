@@ -40,6 +40,10 @@ static void ble_profile_phone_kb_stop(FuriHalBleProfileBase* profile) {
 #define CONNECTION_INTERVAL_MAX (0x24)
 
 static const GapConfig phone_kb_template_config = {
+#ifdef PHONE_KB_LEGACY_GAP
+    // Momentum mntm-007 and older: build with cdefines=["PHONE_KB_LEGACY_GAP"]
+    .adv_service_uuid = 0xFE60,
+#else
     .adv_service =
         {
             .UUID_Type = UUID_TYPE_16,
@@ -47,6 +51,7 @@ static const GapConfig phone_kb_template_config = {
             // won't try to grab this connection.
             .Service_UUID_16 = 0xFE60,
         },
+#endif
     .appearance_char = 0x03C1, // Keyboard
     .bonding_mode = true,
     // Flipper shows a 6-digit PIN, you type it into Android's pairing dialog.

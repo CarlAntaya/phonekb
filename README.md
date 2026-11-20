@@ -5,6 +5,7 @@ Phone (Chrome, Android) --Bluetooth--> Flipper Zero --USB cable--> PC (sees a no
 ## Files
 - `release/phone_kb_mntm-012.fap` – Flipper app for Momentum mntm-012 (API 87)
 - `release/phone_kb_mntm-010_011.fap` – Flipper app for Momentum mntm-010 / mntm-011 (API 86)
+- `release/phone_kb_mntm-007.fap` – Flipper app for Momentum mntm-007 (API 72); built with `cdefines=["PHONE_KB_LEGACY_GAP"]` in application.fam
 - Repo root – the phone controller (a web page using Web Bluetooth): `index.html`, `sw.js`, `manifest.json`, two icons. Live at https://carlantaya.github.io/phonekb/
 - `flipper_app/` – Flipper app source (C)
 
