@@ -3,12 +3,14 @@
 Phone (Chrome, Android) --Bluetooth--> Flipper Zero --USB cable--> PC (sees a normal keyboard + mouse)
 
 ## Files
-- `release/phone_kb.fap` – the Flipper app, built for Momentum mntm-012 (API 87.1)
+- `release/phone_kb_mntm-012.fap` – Flipper app for Momentum mntm-012 (API 87)
+- `release/phone_kb_mntm-010_011.fap` – Flipper app for Momentum mntm-010 / mntm-011 (API 86)
 - Repo root – the phone controller (a web page using Web Bluetooth): `index.html`, `sw.js`, `manifest.json`, two icons. Live at https://carlantaya.github.io/phonekb/
 - `flipper_app/` – Flipper app source (C)
 
 ## 1. Install the Flipper app
-Copy `release/phone_kb.fap` to the SD card at `apps/USB/` (qFlipper, or the Flipper mobile app's file manager).
+Check your version on the Flipper (Settings > System Info / About), pick the matching `.fap`, and copy it to the SD card at `apps/USB/`.
+If the Flipper says "App Too New" or "App Too Old", don't press Continue: that build doesn't match your firmware. (qFlipper, or the Flipper mobile app's file manager).
 It shows up under Apps > USB > Phone Keyboard.
 
 If you're on a different Momentum release and it says "API mismatch", rebuild from source:
