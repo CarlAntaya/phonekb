@@ -139,6 +139,13 @@
     <button id="addStep">+ Add step</button>
   </div>
   <div class="mtop"><button id="mclear" style="flex:1">Clear all steps</button></div>
+  <div class="mut" style="padding: 18px 10px 0">Move macros to another phone: <b>Export</b> saves them to a file you can send yourself (Drive, email, messages). On the other phone, open this page and tap <b>Import</b>.</div>
+  <div class="mtop">
+    <button id="mexpAll" style="flex:1">Export all</button>
+    <button id="mexpOne" style="flex:1">Export one</button>
+    <button id="mimp" style="flex:1">Import</button>
+  </div>
+  <input id="mimpFile" type="file" accept=".json,application/json,text/plain" hidden>
 </div>
 
 <div id="rpanel">
@@ -948,6 +955,87 @@ $("gdel").onclick = () => {
   if (!confirm(`Delete the group "${curGroup}"? The macros themselves are kept.`)) return;
   delete groups[curGroup]; curGroup = ALL; saveGroups(); renderGroupList(); renderGroupEditor();
 };
+
+// ================= import / export =================
+// File format: { "app": "phonekb", "version": 1, "macros": { name: [steps] }, "groups": { name: [macro names] } }
+function downloadJson(obj, filename) {
+  const text = JSON.stringify(obj, null, 1);
+  const file = new File([text], filename, { type: "application/json" });
+  // Phones: offer the share sheet (Drive, email, Messages…) when available, otherwise download
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: filename }).catch((e) => { if (e.name !== "AbortError") saveFile(file); });
+  } else saveFile(file);
+}
+function saveFile(file) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file); a.download = file.name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+function stamp() { const d = new Date(), z = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`; }
+function safeName(n) { return n.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "macro"; }
+
+$("mexpAll").onclick = () => {
+  const withSteps = Object.keys(macros).filter((n) => macros[n].length);
+  if (!withSteps.length) { alert("There are no macros with steps to export yet."); return; }
+  downloadJson({ app: "phonekb", version: 1, macros, groups }, `phonekb-macros-${stamp()}.json`);
+};
+$("mexpOne").onclick = () => {
+  if (!steps().length) { alert("This macro has no steps yet."); return; }
+  downloadJson({ app: "phonekb", version: 1, macros: { [curName]: steps() }, groups: {} }, `phonekb-${safeName(curName)}.json`);
+};
+$("mimp").onclick = () => { $("mimpFile").value = ""; $("mimpFile").click(); };
+$("mimpFile").onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try { importData(JSON.parse(await f.text())); }
+  catch (err) { alert("That file couldn't be imported. Make sure it's a file exported from Phone Keyboard.\n\n(" + err.message + ")"); }
+};
+
+function cleanSteps(list) {
+  if (!Array.isArray(list)) return null;
+  return list.filter((st) => st && typeof st === "object" && KIND[st.t]).map((st) => ({ ...st }));
+}
+function importData(data) {
+  if (!data || typeof data !== "object" || typeof data.macros !== "object" || Array.isArray(data.macros)) throw new Error("no macros found in file");
+  const incoming = {};
+  for (const [name, list] of Object.entries(data.macros)) { const c = cleanSteps(list); if (c && String(name).trim()) incoming[String(name).trim()] = c; }
+  const names = Object.keys(incoming);
+  if (!names.length) throw new Error("no macros found in file");
+
+  // Name clashes: replace, or keep both by renaming the imported copy
+  const clashes = names.filter((n) => macros[n] && macros[n].length);
+  let replace = true;
+  if (clashes.length) {
+    replace = confirm(`${clashes.length} macro${clashes.length > 1 ? "s" : ""} with the same name already exist${clashes.length > 1 ? "" : "s"} here:\n${clashes.slice(0, 8).join(", ")}${clashes.length > 8 ? "…" : ""}\n\nOK = replace them with the imported version\nCancel = keep both (imported copies get a number)`);
+  }
+  const rename = {};
+  for (const n of names) {
+    let target = n;
+    if (!replace && macros[n] && macros[n].length) { let i = 2; while (macros[`${n} (${i})`]) i++; target = `${n} (${i})`; }
+    rename[n] = target;
+    macros[target] = incoming[n];
+  }
+  // drop the empty placeholder macro if it's the only thing left over
+  if (macros["Macro 1"] && !macros["Macro 1"].length && !incoming["Macro 1"]) {
+    delete macros["Macro 1"];
+    for (const k of Object.keys(groups)) groups[k] = groups[k].filter((n) => n !== "Macro 1");
+  }
+
+  // Groups: merge members into same-named groups
+  let gCount = 0;
+  if (data.groups && typeof data.groups === "object" && !Array.isArray(data.groups)) {
+    for (const [g, members] of Object.entries(data.groups)) {
+      if (!Array.isArray(members) || !String(g).trim() || g === ALL) continue;
+      const list = groups[g] || (groups[g] = []);
+      for (const m of members) { const t = rename[m] || (macros[m] ? m : null); if (t && !list.includes(t)) list.push(t); }
+      gCount++;
+    }
+  }
+  if (!macros[curName]) curName = rename[names[0]];
+  save(); saveGroups(); openPanel();
+  alert(`Imported ${names.length} macro${names.length > 1 ? "s" : ""}` + (gCount ? ` and ${gCount} group${gCount > 1 ? "s" : ""}` : "") + ".");
+}
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 // Offline support: cache the page so it opens with no internet
