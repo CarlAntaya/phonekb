@@ -234,7 +234,16 @@ async function connect() {
   }
 }
 
+let connecting = false;
 async function openGatt() {
+  if (connecting) return;           // a connect is already running (e.g. auto-reconnect)
+  connecting = true;
+  try { await openGattOnce(); }
+  catch (e) { wantConnected = false; try { device.gatt.disconnect(); } catch (_) {} throw e; }  // start clean next time
+  finally { connecting = false; }
+}
+
+async function openGattOnce() {
   setStatus("Connecting to " + device.name + "…", false);
   const server = await device.gatt.connect();
   const svc = await server.getPrimaryService(SERVICE);
@@ -242,14 +251,16 @@ async function openGatt() {
   // First write needs an encrypted, bonded link. Android shows its pairing
   // dialog here: type the 6-digit PIN that appears on the Flipper's screen.
   setStatus("Pairing… enter the PIN shown on the Flipper", false);
-  for (let attempt = 0; attempt < 3; attempt++) {
+  // Android can reject writes with "GATT operation already in progress" while
+  // it is still bonding or discovering services, so keep retrying for ~30 s.
+  for (let attempt = 0; attempt < 8; attempt++) {
     try {
       await rxChar.writeValueWithResponse(new Uint8Array([OP.RELEASE]));
       connected = true;
       break;
     } catch (e) {
-      if (attempt === 2) throw new Error("Pairing failed. Check the PIN, then tap Connect again. (" + e.message + ")");
-      await sleep(2500);
+      if (attempt === 7 || !device.gatt.connected) throw new Error("Pairing failed. Check the PIN, then tap Connect again. (" + e.message + ")");
+      await sleep(/in progress/i.test(e.message) ? 1500 : 4000);
     }
   }
   setStatus("Connected: " + device.name, true);
@@ -270,7 +281,7 @@ function onDisconnected() {
 
 $("connect").onclick = () => {
   if (connected) { wantConnected = false; device.gatt.disconnect(); }
-  else connect();
+  else if (!connecting) connect();
 };
 
 // ---------------- send queue ----------------
