@@ -49,15 +49,74 @@
   .settings { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 8px 10px; color: var(--muted); font-size: 13px; align-items: center; }
   .settings input[type=range] { width: 110px; }
   #err { color: var(--bad); padding: 0 12px; font-size: 13px; }
+  /* ---- macros ---- */
+  #macroBtn { padding: 8px 12px; }
+  #recbar { display: none; align-items: center; gap: 10px; padding: 6px 12px; background: #4a1414; font-size: 13px; }
+  #recbar.on { display: flex; }
+  #recbar.play { background: #14304a; }
+  #recbar span { flex: 1; }
+  #recbar button { padding: 6px 14px; }
+  #mpanel { display: none; position: fixed; inset: 0; z-index: 10; background: var(--bg); overflow-y: auto; padding-bottom: 40px; }
+  #mpanel.open { display: block; }
+  #mpanel header { position: sticky; top: 0; z-index: 1; }
+  .mtop { display: flex; gap: 6px; padding: 8px 8px 0; align-items: center; }
+  .mtop button { padding: 10px 12px; }
+  .mut { color: var(--muted); font-size: 13px; }
+  #mpanel select, #mpanel input:not([type=checkbox]) { font: inherit; font-size: 16px; background: var(--panel); color: var(--text);
+    border: 1px solid #333843; border-radius: 8px; padding: 8px; min-width: 0; }
+  #steps { margin-top: 8px; border-top: 1px solid #23262d; }
+  .step { display: flex; gap: 6px; align-items: center; padding: 6px 8px; border-bottom: 1px solid #23262d; }
+  .step.cur { background: #3a2a10; }
+  .step .num { color: var(--muted); width: 22px; font-size: 12px; flex: none; }
+  .step .kind { width: 58px; flex: none; font-size: 13px; color: var(--key-active); }
+  .step .body { flex: 1; display: flex; gap: 6px; align-items: center; min-width: 0; }
+  .step .body input, .step .body select { flex: 1; width: 0; }
+  .step .ctl { display: flex; gap: 4px; flex: none; }
+  .step .ctl button { padding: 6px 9px; }
+  #recBtn.on { background: var(--bad); color: #fff; }
+  #playBtn.on { background: #2f6fb0; }
 </style>
 </head>
 <body>
 <header>
   <div id="dot"></div>
   <div id="status">Not connected</div>
+  <button id="macroBtn">Macros</button>
   <button id="connect">Connect</button>
 </header>
+<div id="recbar"><span id="recText"></span><button id="recStop">Stop</button></div>
 <div id="err"></div>
+
+<div id="mpanel">
+  <header><b style="flex:1">Macros</b><button id="mclose" style="padding:8px 16px">Done</button></header>
+  <div class="mtop">
+    <select id="mlist" style="flex:1"></select>
+    <button id="mnew">New</button><button id="mren">Rename</button><button id="mdel">Delete</button>
+  </div>
+  <div class="mtop">
+    <button id="recBtn" style="flex:1">● Record</button>
+    <button id="playBtn" style="flex:1">▶ Play</button>
+    <span class="mut">×</span><input id="mrep" type="number" min="1" max="999" value="1" inputmode="numeric" style="width:64px">
+  </div>
+  <div class="mtop mut">Record adds to the end of the list. Every step can be edited, moved or deleted below. Key steps use DuckyScript names, e.g. <b>CTRL c</b>, <b>ENTER</b>, <b>ALT TAB</b>, <b>DOWN</b>.</div>
+  <div id="steps"></div>
+  <div class="mtop">
+    <select id="addType" style="flex:1">
+      <option value="text">Type text</option>
+      <option value="key">Key / shortcut</option>
+      <option value="click">Mouse click</option>
+      <option value="move">Mouse move</option>
+      <option value="corner">Mouse to top-left corner</option>
+      <option value="press">Mouse button down</option>
+      <option value="release">Mouse button up</option>
+      <option value="scroll">Scroll</option>
+      <option value="media">Media key</option>
+      <option value="delay">Wait</option>
+    </select>
+    <button id="addStep">+ Add step</button>
+  </div>
+  <div class="mtop"><button id="mclear" style="flex:1">Clear all steps</button></div>
+</div>
 
 <div id="pad"><span>Touchpad<br>drag = move · tap = click · 2-finger tap = right click<br>2-finger drag = scroll · double-tap &amp; hold = drag</span></div>
 
@@ -222,7 +281,11 @@ let moveX = 0, moveY = 0, scrollAcc = 0;
 let pumping = false;
 const MAX_WRITE = 180;
 
-function send(...bytes) { queue.push(...bytes); pump(); }
+function send(...bytes) {
+  recordBytes(bytes);
+  if (!connected) return;   // don't pile up input to dump on the PC at reconnect
+  queue.push(...bytes); pump();
+}
 
 function flushMotion() {
   while (moveX !== 0 || moveY !== 0) {
@@ -230,10 +293,11 @@ function flushMotion() {
     const dy = Math.max(-127, Math.min(127, Math.trunc(moveY)));
     if (dx === 0 && dy === 0) break;
     queue.push(OP.MOVE, dx & 0xFF, dy & 0xFF);
+    rec({ t: "move", x: dx, y: dy });
     moveX -= dx; moveY -= dy;
   }
   const s = Math.trunc(scrollAcc);
-  if (s !== 0) { const c = Math.max(-127, Math.min(127, s)); queue.push(OP.SCROLL, c & 0xFF); scrollAcc -= c; }
+  if (s !== 0) { const c = Math.max(-127, Math.min(127, s)); queue.push(OP.SCROLL, c & 0xFF); rec({ t: "scroll", n: c }); scrollAcc -= c; }
 }
 
 async function pump() {
@@ -455,6 +519,249 @@ function endPointer(e) {
 }
 pad.addEventListener("pointerup", endPointer);
 pad.addEventListener("pointercancel", endPointer);
+
+// ================= macros: record, edit, play =================
+// A macro is a list of steps. Recording watches everything this page sends
+// to the Flipper and turns it into editable steps, with Wait steps for pauses.
+const MODS = { CTRL: 1, CONTROL: 1, SHIFT: 2, ALT: 4, GUI: 8, WIN: 8, WINDOWS: 8, COMMAND: 8 };
+const KEYNAMES = { ENTER: 0x28, RETURN: 0x28, ESC: 0x29, ESCAPE: 0x29, BACKSPACE: 0x2A, TAB: 0x2B, SPACE: 0x2C,
+  CAPSLOCK: 0x39, PRINTSCREEN: 0x46, SCROLLLOCK: 0x47, PAUSE: 0x48, INSERT: 0x49, HOME: 0x4A, PAGEUP: 0x4B,
+  DELETE: 0x4C, DEL: 0x4C, END: 0x4D, PAGEDOWN: 0x4E, RIGHT: 0x4F, RIGHTARROW: 0x4F, LEFT: 0x50, LEFTARROW: 0x50,
+  DOWN: 0x51, DOWNARROW: 0x51, UP: 0x52, UPARROW: 0x52, MENU: 0x65, APP: 0x65 };
+const KEY_OUT = { 0x28: "ENTER", 0x29: "ESC", 0x2A: "BACKSPACE", 0x2B: "TAB", 0x2C: "SPACE", 0x39: "CAPSLOCK",
+  0x46: "PRINTSCREEN", 0x49: "INSERT", 0x4A: "HOME", 0x4B: "PAGEUP", 0x4C: "DELETE", 0x4D: "END", 0x4E: "PAGEDOWN",
+  0x4F: "RIGHT", 0x50: "LEFT", 0x51: "DOWN", 0x52: "UP", 0x65: "MENU" };
+const MEDIA = { 234: "Volume down", 233: "Volume up", 226: "Mute", 205: "Play/Pause", 181: "Next track", 182: "Previous track" };
+const BTN = { 1: "Left", 2: "Right", 4: "Middle" };
+const KIND = { text: "Type", key: "Key", click: "Click", move: "Move", corner: "Corner", press: "Btn down",
+  release: "Btn up", scroll: "Scroll", media: "Media", delay: "Wait" };
+
+function keyToName(m, k) {
+  const parts = [];
+  if (m & 1) parts.push("CTRL"); if (m & 4) parts.push("ALT"); if (m & 2) parts.push("SHIFT"); if (m & 8) parts.push("GUI");
+  let n = KEY_OUT[k];
+  if (!n && k >= 0x04 && k <= 0x1D) n = String.fromCharCode(97 + k - 0x04);
+  else if (!n && k >= 0x1E && k <= 0x26) n = String(k - 0x1D);
+  else if (!n && k === 0x27) n = "0";
+  else if (!n && k >= 0x3A && k <= 0x45) n = "F" + (k - 0x39);
+  else if (!n && k) { const c = Object.entries({ "-": 0x2D, "=": 0x2E, "[": 0x2F, "]": 0x30, "\\": 0x31, ";": 0x33, "'": 0x34, "`": 0x35, ",": 0x36, ".": 0x37, "/": 0x38 }).find(([, v]) => v === k); n = c ? c[0] : "0x" + k.toString(16); }
+  if (n) parts.push(n);
+  return parts.join(" ");
+}
+function parseKey(str) {
+  let m = 0, k = 0;
+  for (const tok of String(str).trim().split(/[\s+]+/)) {
+    if (!tok) continue;
+    const u = tok.toUpperCase();
+    if (MODS[u]) m |= MODS[u];
+    else if (KEYNAMES[u]) k = KEYNAMES[u];
+    else if (/^F([1-9]|1[0-2])$/.test(u)) k = 0x39 + +u.slice(1);
+    else if (/^0X[0-9A-F]{1,2}$/.test(u)) k = parseInt(u, 16);
+    else if (tok.length === 1 && charToKey(tok)) k = charToKey(tok);
+    else return null;
+  }
+  return (m || k) ? { m, k } : null;
+}
+
+// ---- storage ----
+let macros = {}, curName = "Macro 1";
+try { macros = JSON.parse(localStorage.getItem("phonekb.macros") || "{}") || {}; curName = localStorage.getItem("phonekb.macro") || curName; } catch (e) {}
+if (!Object.keys(macros).length) macros[curName] = [];
+if (!macros[curName]) curName = Object.keys(macros)[0];
+let saveTimer = 0;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem("phonekb.macros", JSON.stringify(macros)); localStorage.setItem("phonekb.macro", curName); } catch (e) {}
+  }, 300);
+}
+const steps = () => macros[curName];
+
+// ---- recording ----
+let recording = false, playing = false, lastRecT = null, lastStepT = 0;
+function rec(step) {
+  if (!recording || playing) return;
+  const now = performance.now(), list = steps(), last = list[list.length - 1];
+  const gap = lastRecT == null ? 0 : now - lastRecT;
+  let merged = false;
+  if (last && step.t === "move" && last.t === "move" && now - lastStepT < 80) { last.x += step.x; last.y += step.y; merged = true; }
+  else if (last && step.t === "scroll" && last.t === "scroll" && now - lastStepT < 150) { last.n += step.n; merged = true; }
+  else if (last && step.t === "text" && last.t === "text" && gap < 1500) { last.s += step.s; merged = true; }
+  else if (last && step.t === "release" && last.t === "press" && last.b === step.b && gap < 400) { last.t = "click"; merged = true; }
+  if (!merged) {
+    if (gap >= 60) list.push({ t: "delay", ms: Math.round(gap / 10) * 10 });
+    list.push(step); lastStepT = now;
+  }
+  lastRecT = now;
+  save(); showBar();
+}
+function recordBytes(b) {
+  if (!recording || playing) return;
+  switch (b[0]) {
+    case OP.TAP: rec({ t: "key", k: keyToName(b[1], b[2]) }); break;
+    case OP.DOWN: rec({ t: "press", b: b[1] }); break;
+    case OP.UP: rec({ t: "release", b: b[1] }); break;
+    case OP.CONSUMER: rec({ t: "media", c: b[1] | (b[2] << 8) }); break;
+    case OP.TEXT: rec({ t: "text", s: String.fromCharCode(...b.slice(2, 2 + b[1])) }); break;
+  }
+}
+function startRec() {
+  if (!connected) { showErr("Connect to the Flipper first, so you can see what you're recording on the PC."); return; }
+  recording = true; lastRecT = null; clearMods();
+  $("mpanel").classList.remove("open");
+  showBar();
+}
+function stopRec() {
+  recording = false; showBar(); save();
+  openPanel();
+}
+function showBar() {
+  const bar = $("recbar");
+  bar.classList.toggle("on", recording || playing);
+  bar.classList.toggle("play", playing);
+  if (recording) $("recText").textContent = `● Recording "${curName}": ${steps().length} steps. Use the touchpad and keyboard as normal.`;
+  $("recBtn").classList.toggle("on", recording);
+  $("playBtn").classList.toggle("on", playing);
+  $("playBtn").textContent = playing ? "■ Stop" : "▶ Play";
+}
+
+// ---- playback ----
+let stopFlag = false;
+async function waitIdle() { while (connected && (pumping || queue.length)) await sleep(10); }
+async function wait(ms) { const end = performance.now() + ms; while (!stopFlag && performance.now() < end) await sleep(Math.min(50, end - performance.now())); }
+async function runStep(s) {
+  const clamp = (v) => Math.max(-127, Math.min(127, v));
+  switch (s.t) {
+    case "text": {
+      const t = toAscii(s.s || "");
+      for (let i = 0; i < t.length && !stopFlag; i += 100) {
+        const part = t.slice(i, i + 100);
+        typeText(part); await waitIdle(); await wait(part.length * 6 + 30);  // let the Flipper finish typing
+      }
+      break;
+    }
+    case "key": { const p = parseKey(s.k); if (p) send(OP.TAP, p.m, p.k); break; }
+    case "click": send(OP.DOWN, s.b); send(OP.UP, s.b); break;
+    case "press": send(OP.DOWN, s.b); break;
+    case "release": send(OP.UP, s.b); break;
+    case "move": {
+      let x = Math.round(+s.x || 0), y = Math.round(+s.y || 0);
+      while (x || y) { const dx = clamp(x), dy = clamp(y); send(OP.MOVE, dx & 0xFF, dy & 0xFF); x -= dx; y -= dy; }
+      break;
+    }
+    case "corner": for (let i = 0; i < 40; i++) send(OP.MOVE, -127 & 0xFF, -127 & 0xFF); break;
+    case "scroll": { let n = Math.round(+s.n || 0); while (n) { const c = clamp(n); send(OP.SCROLL, c & 0xFF); n -= c; } break; }
+    case "media": send(OP.CONSUMER, s.c & 0xFF, s.c >> 8); break;
+    case "delay": await wait(+s.ms || 0); break;
+  }
+  await waitIdle();
+}
+async function play() {
+  if (playing) { stopPlay(); return; }
+  if (!connected) { showErr("Connect to the Flipper first."); return; }
+  if (recording) stopRec();
+  const list = steps(), reps = Math.max(1, Math.min(999, +$("mrep").value || 1));
+  if (!list.length) { showErr("This macro has no steps yet."); return; }
+  showErr(""); clearMods(); playing = true; stopFlag = false; showBar();
+  try {
+    for (let r = 0; r < reps && !stopFlag; r++) {
+      for (let i = 0; i < list.length && !stopFlag && connected; i++) {
+        $("recText").textContent = `▶ Playing "${curName}": step ${i + 1}/${list.length}` + (reps > 1 ? `, run ${r + 1}/${reps}` : "");
+        markStep(i);
+        await runStep(list[i]);
+      }
+    }
+  } finally {
+    if (stopFlag && connected) { queue = []; send(OP.RELEASE); }
+    playing = false; markStep(-1); showBar();
+  }
+}
+function stopPlay() { stopFlag = true; queue = []; }
+function markStep(i) { document.querySelectorAll(".step").forEach((el, j) => el.classList.toggle("cur", j === i)); }
+
+// ---- editor ----
+function field(type, value, on, attrs = {}) {
+  const el = document.createElement(type === "select" ? "select" : "input");
+  if (type !== "select") el.type = type;
+  const { options, ...rest } = attrs;
+  Object.assign(el, rest);
+  if (type === "select") for (const [v, label] of Object.entries(options)) { const o = new Option(label, v); el.add(o); }
+  el.value = value;
+  el.addEventListener("change", () => { on(type === "number" ? +el.value : el.value); save(); });
+  return el;
+}
+function renderSteps() {
+  const box = $("steps"); box.textContent = "";
+  steps().forEach((s, i) => {
+    const row = document.createElement("div"); row.className = "step";
+    const num = document.createElement("span"); num.className = "num"; num.textContent = i + 1;
+    const kind = document.createElement("span"); kind.className = "kind"; kind.textContent = KIND[s.t] || s.t;
+    const body = document.createElement("div"); body.className = "body";
+    const btnOpts = { options: BTN };
+    switch (s.t) {
+      case "text": body.append(field("text", s.s, (v) => s.s = v, { placeholder: "Text to type", autocapitalize: "off", autocorrect: "off", spellcheck: false })); break;
+      case "key": {
+        const f = field("text", s.k, (v) => { s.k = v; f.style.borderColor = parseKey(v) ? "" : "var(--bad)"; }, { placeholder: "e.g. CTRL c", autocapitalize: "off", autocorrect: "off", spellcheck: false });
+        if (!parseKey(s.k)) f.style.borderColor = "var(--bad)";
+        body.append(f); break;
+      }
+      case "click": case "press": case "release": body.append(field("select", s.b, (v) => s.b = +v, btnOpts)); break;
+      case "move":
+        body.append("x", field("number", s.x, (v) => s.x = v, { inputMode: "numeric" }), "y", field("number", s.y, (v) => s.y = v, { inputMode: "numeric" })); break;
+      case "corner": { const n = document.createElement("span"); n.className = "mut"; n.textContent = "pointer to top-left"; body.append(n); break; }
+      case "scroll": body.append(field("number", s.n, (v) => s.n = v, { inputMode: "numeric" }), "(− = down)"); break;
+      case "media": body.append(field("select", s.c, (v) => s.c = +v, { options: MEDIA })); break;
+      case "delay": body.append(field("number", s.ms, (v) => s.ms = v, { inputMode: "numeric", min: 0 }), "ms"); break;
+    }
+    const ctl = document.createElement("div"); ctl.className = "ctl";
+    const mk = (label, fn) => { const b = document.createElement("button"); b.textContent = label; b.onclick = () => { fn(); save(); renderSteps(); }; ctl.append(b); };
+    const list = steps();
+    mk("▲", () => { if (i > 0) [list[i - 1], list[i]] = [list[i], list[i - 1]]; });
+    mk("▼", () => { if (i < list.length - 1) [list[i + 1], list[i]] = [list[i], list[i + 1]]; });
+    mk("✕", () => list.splice(i, 1));
+    row.append(num, kind, body, ctl); box.append(row);
+  });
+  if (!steps().length) { const e = document.createElement("div"); e.className = "mtop mut"; e.style.paddingBottom = "8px"; e.textContent = "No steps yet. Tap Record, or add steps one at a time below."; box.append(e); }
+}
+function renderList() {
+  const sel = $("mlist"); sel.textContent = "";
+  for (const n of Object.keys(macros)) sel.add(new Option(n, n));
+  sel.value = curName;
+}
+function openPanel() { renderList(); renderSteps(); showBar(); $("mpanel").classList.add("open"); }
+
+const NEW_STEP = { text: () => ({ t: "text", s: "" }), key: () => ({ t: "key", k: "ENTER" }), click: () => ({ t: "click", b: 1 }),
+  move: () => ({ t: "move", x: 100, y: 0 }), corner: () => ({ t: "corner" }), press: () => ({ t: "press", b: 1 }),
+  release: () => ({ t: "release", b: 1 }), scroll: () => ({ t: "scroll", n: -3 }), media: () => ({ t: "media", c: 205 }),
+  delay: () => ({ t: "delay", ms: 500 }) };
+
+$("macroBtn").onclick = openPanel;
+$("mclose").onclick = () => $("mpanel").classList.remove("open");
+$("mlist").onchange = (e) => { curName = e.target.value; save(); renderSteps(); };
+$("mnew").onclick = () => {
+  let n = 1; while (macros["Macro " + n]) n++;
+  const name = (prompt("Name for the new macro:", "Macro " + n) || "").trim();
+  if (!name) return;
+  if (!macros[name]) macros[name] = [];
+  curName = name; save(); openPanel();
+};
+$("mren").onclick = () => {
+  const name = (prompt("Rename macro:", curName) || "").trim();
+  if (!name || name === curName) return;
+  if (macros[name]) { alert("A macro with that name already exists."); return; }
+  macros[name] = macros[curName]; delete macros[curName]; curName = name; save(); renderList();
+};
+$("mdel").onclick = () => {
+  if (!confirm(`Delete "${curName}"?`)) return;
+  delete macros[curName];
+  if (!Object.keys(macros).length) macros["Macro 1"] = [];
+  curName = Object.keys(macros)[0]; save(); openPanel();
+};
+$("mclear").onclick = () => { if (steps().length && confirm("Remove every step from this macro?")) { macros[curName] = []; save(); renderSteps(); } };
+$("addStep").onclick = () => { steps().push(NEW_STEP[$("addType").value]()); save(); renderSteps(); $("steps").lastChild.scrollIntoView?.({ block: "nearest" }); };
+$("recBtn").onclick = () => recording ? stopRec() : startRec();
+$("recStop").onclick = () => { if (recording) stopRec(); else stopPlay(); };
+$("playBtn").onclick = play;
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 // Offline support: cache the page so it opens with no internet
