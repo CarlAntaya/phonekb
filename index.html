@@ -28,7 +28,7 @@
   #connect { background: var(--key-active); color: #111; font-weight: 600; padding: 8px 14px; }
   #pad { flex: 1; margin: 8px 8px 0; border-radius: 12px; background: var(--panel);
     touch-action: none; position: relative; min-height: 120px; display: flex; align-items: center; justify-content: center; }
-  #pad span { color: #3a3f4a; font-size: 13px; text-align: center; pointer-events: none; }
+  #pad span { color: #5b616d; font-size: 13px; text-align: center; pointer-events: none; }
   .row { display: grid; gap: 6px; padding: 6px 8px 0; }
   .r2 { grid-template-columns: 1fr 1fr; }
   .r3 { grid-template-columns: 1fr 1fr 1fr; }
@@ -47,7 +47,7 @@
   textarea { width: 100%; height: 80px; font: inherit; background: var(--panel); color: var(--text);
     border: 1px solid #333843; border-radius: 8px; padding: 8px; }
   .settings { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 8px 10px; color: var(--muted); font-size: 13px; align-items: center; }
-  .settings input[type=range] { width: 110px; }
+  .settings input[type=range] { width: 110px; accent-color: var(--key-active); }
   #err { color: var(--bad); padding: 0 12px; font-size: 13px; }
   /* ---- macros ---- */
   #macroBtn { padding: 8px 12px; }
@@ -98,7 +98,7 @@
     <button id="playBtn" style="flex:1">▶ Play</button>
     <span class="mut">×</span><input id="mrep" type="number" min="1" max="999" value="1" inputmode="numeric" style="width:64px">
   </div>
-  <div class="mtop mut">Record adds to the end of the list. Every step can be edited, moved or deleted below. Key steps use DuckyScript names, e.g. <b>CTRL c</b>, <b>ENTER</b>, <b>ALT TAB</b>, <b>DOWN</b>.</div>
+  <div class="mut" style="padding: 8px 10px 0">Record adds to the end of the list. Every step can be edited, moved or deleted below. Key steps use DuckyScript names, e.g. <b>CTRL c</b>, <b>ENTER</b>, <b>ALT TAB</b>, <b>DOWN</b>.</div>
   <div id="steps"></div>
   <div class="mtop">
     <select id="addType" style="flex:1">
@@ -155,7 +155,7 @@
     <button data-key="75">PgUp</button>
     <button data-key="78">PgDn</button>
     <button data-key="70">PrtSc</button>
-    <button data-combo="5,76">C-A-Del</button>
+    <button data-combo="5,76" style="font-size:12px">Ctrl Alt Del</button>
   </div>
   <div class="row r6" id="fkeys"></div>
   <div class="row r6">

@@ -9,5 +9,5 @@ App(
     fap_icon="phone_kb_10px.png",
     fap_version="1.0",
     fap_description="Type and move the mouse on a USB-connected PC from your phone over Bluetooth",
-    fap_author="you",
+    fap_author="CarlAntaya",
 )

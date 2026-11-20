@@ -1,59 +1,119 @@
-# Phone Keyboard for Flipper Zero (Momentum)
+# Phone Keyboard for Flipper Zero
 
-Phone (Chrome, Android) --Bluetooth--> Flipper Zero --USB cable--> PC (sees a normal keyboard + mouse)
+Use your Android phone as a **wireless keyboard and touchpad** for any computer, with your Flipper Zero as the receiver.
 
-## Files
-- `release/phone_kb_mntm-012.fap` – Flipper app for Momentum mntm-012 (API 87)
-- `release/phone_kb_mntm-010_011.fap` – Flipper app for Momentum mntm-010 / mntm-011 (API 86)
-- `release/phone_kb_mntm-007.fap` – Flipper app for Momentum mntm-007 (API 72); built with `cdefines=["PHONE_KB_LEGACY_GAP"]` in application.fam
-- Repo root – the phone controller (a web page using Web Bluetooth): `index.html`, `sw.js`, `manifest.json`, two icons. Live at https://carlantaya.github.io/phonekb/
-- `flipper_app/` – Flipper app source (C)
-
-## 1. Install the Flipper app
-Check your version on the Flipper (Settings > System Info / About), pick the matching `.fap`, and copy it to the SD card at `apps/USB/`.
-If the Flipper says "App Too New" or "App Too Old", don't press Continue: that build doesn't match your firmware. (qFlipper, or the Flipper mobile app's file manager).
-It shows up under Apps > USB > Phone Keyboard.
-
-If you're on a different Momentum release and it says "API mismatch", rebuild from source:
 ```
+ Phone (Chrome)  ──Bluetooth──▶  Flipper Zero  ──USB cable──▶  PC
+                                                   sees a normal USB keyboard + mouse
+```
+
+The computer needs **no drivers, no software and no Bluetooth**. It just sees a plain USB keyboard and mouse, so it also works in BIOS/UEFI setup, on locked-down work PCs, Raspberry Pis, smart TVs, and anything else that accepts a USB keyboard.
+
+**Open the phone controller:** https://carlantaya.github.io/phonekb/
+
+![Main screen, extra keys, and the macro editor](docs/screenshots.png)
+
+## Features
+
+- **Touchpad:** drag to move, tap to click, two-finger tap to right-click, two-finger drag to scroll, double-tap and hold to drag
+- **Hold click:** tap once to hold the left button down (for dragging windows or selecting text), tap again to release
+- **Adjustable touch speed**, remembered on your phone
+- **Type with your normal phone keyboard**, including autocorrect and swipe typing (corrections are fixed on the PC with backspaces)
+- **Special keys:** Ctrl / Alt / Win / Shift (sticky), Esc, Tab, Caps Lock, arrows, Home/End, PgUp/PgDn, F1–F12, Print Screen, Ctrl+Alt+Del
+- **Shortcuts:** Copy, Paste, Undo, Select all, Alt+Tab, Show desktop
+- **Media keys:** volume, mute, play/pause, next track
+- **Macros:** record what you do, edit the steps (keys, text, clicks, mouse moves, waits), and replay them, as many times as you like
+- **Send a block of text:** paste a paragraph on the phone and have it typed out on the PC
+- **Works offline:** install it from Chrome and it runs with no internet
+- **Secure:** the Bluetooth link is PIN-paired and encrypted, so nearby devices can't inject keystrokes
+
+## Requirements
+
+- Flipper Zero running **[Momentum firmware](https://momentum-fw.dev/)** (see the table below)
+- Android phone with **Chrome** (iPhone isn't supported: iOS browsers don't have Web Bluetooth)
+- A USB-C cable from the Flipper to the computer
+
+## Setup
+
+### 1. Install the Flipper app
+
+Check your firmware version on the Flipper under **Settings → System Info**, then download the matching file:
+
+| Momentum version | Download |
+|---|---|
+| mntm-012 | [phone_kb_mntm-012.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_mntm-012.fap) |
+| mntm-010, mntm-011 | [phone_kb_mntm-010_011.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_mntm-010_011.fap) |
+| mntm-007 | [phone_kb_mntm-007.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_mntm-007.fap) |
+
+Copy the file to the Flipper's SD card in **`apps/USB/`**. Any of these ways works:
+- **qFlipper** on a PC (File Manager → SD Card → apps → USB)
+- **[lab.flipper.net](https://lab.flipper.net)** in Chrome on a PC
+- the **Flipper phone app's** File Manager, if your version has one
+- putting the SD card in a card reader
+
+> If the Flipper says **"App Too New"** or **"App Too Old"**, press **Cancel**, not Continue. That file doesn't match your firmware and running it will crash the Flipper.
+
+### 2. Open the phone controller
+
+Open **https://carlantaya.github.io/phonekb/** in **Chrome on Android**, then use Chrome's **⋮ menu → Install app** (or *Add to Home screen*). After the first visit it works with no internet.
+
+### 3. Connect
+
+1. Plug the Flipper into the computer with the USB cable.
+2. Close the Flipper phone app and qFlipper, so nothing else is connected to the Flipper.
+3. On the Flipper, open **Apps → USB → Phone Keyboard**.
+4. On the phone, make sure **Bluetooth and Location** are on, tap **Connect**, and choose **PhoneKB …**.
+5. The first time, Android asks for a PIN: type the **6 digits shown on the Flipper**.
+
+On the Flipper: **Back** exits, **hold Left** forgets the paired phone.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| "Web Bluetooth isn't available" | Use Chrome on Android, and open the https:// link (not a downloaded file). |
+| PhoneKB doesn't appear in the list | Make sure the app is open on the Flipper, phone Location is on, and the Flipper phone app is closed. |
+| Pairing fails | Hold Left on the Flipper to forget old pairings, remove "PhoneKB" from Android's Bluetooth settings, and try again. |
+| Flipper crashes with "HardFault" | Wrong `.fap` for your firmware version; see the table above. |
+| Wrong symbols typed | The PC must use the US keyboard layout. Accented letters and emoji are skipped. |
+
+## Limitations
+
+- Android + Chrome only.
+- US keyboard layout only.
+- While the app is running, qFlipper and the Flipper phone app can't connect to the Flipper.
+
+## Building from source
+
+The Flipper app is in [`flipper_app/`](flipper_app). With [ufbt](https://github.com/flipperdevices/flipperzero-ufbt):
+
+```sh
 pip install ufbt
 ufbt update --index-url=https://up.momentum-fw.dev/firmware/directory.json
-cd flipper_app && ufbt        # output in dist/phone_kb.fap
+cd flipper_app && ufbt        # output: dist/phone_kb.fap
 ```
 
-## 2. Host the phone page (Web Bluetooth needs https)
-Easiest options:
-- GitHub Pages: new repo, upload all 5 files from `phone/`, Settings > Pages > deploy from main.
-- Netlify Drop (app.netlify.com/drop): drag the `phone` folder in from a computer.
+For mntm-007 and older, add `cdefines=["PHONE_KB_LEGACY_GAP"]` to `application.fam`.
 
-Open the URL in **Chrome on Android** once with internet, then menu > Install app (or Add to Home screen).
-After that it opens and works with no internet at all. If you edit the files later, bump `VERSION` in `sw.js`.
+The phone controller is just the static files in the repo root (`index.html`, `sw.js`, `manifest.json`, icons), so you can host them anywhere with https. When you change them, bump `VERSION` in `sw.js` so installed copies update.
 
-## 3. Use it
-1. Plug the Flipper into the PC by USB and open Phone Keyboard on the Flipper.
-2. On the phone, tap Connect and pick "PhoneKB <your flipper name>".
-3. The first time, Android asks for a PIN; type the 6 digits shown on the Flipper.
+### How it works
 
-Touchpad: drag = move, tap = left click, two-finger tap = right click,
-two-finger drag = scroll, tap then touch-and-hold = drag.
-Ctrl/Alt/Win/Shift are sticky: tap one, then a key or letter (e.g. Ctrl, then c).
-The ⋯ button shows F-keys, media keys, shortcuts, a "paste a block of text" box and speed settings.
+The Flipper app swaps the Flipper's Bluetooth profile for its own, which uses the Flipper serial GATT service under a separate name, MAC address and bond store, so it doesn't interfere with the official app's pairing. It switches the USB port into HID keyboard + mouse mode. The phone page talks to it with [Web Bluetooth](https://developer.mozilla.org/docs/Web/API/Web_Bluetooth_API) and sends small binary packets, which the Flipper turns into USB HID reports.
 
-On the Flipper: Back = exit, hold Left = forget the paired phone.
+**Protocol** (phone → Flipper, written to characteristic `19ed82ae-ed21-4c9d-4145-228e62fe0000` in service `8fe5b3d5-2e7f-4a98-2a48-7acc60fe0000`; several packets may be sent in one write):
 
-## Notes
-- While the app runs, qFlipper and the official Flipper phone app can't connect (USB is a keyboard, BLE is in use).
-- Text goes out as US-layout key codes. Non-ASCII characters (emoji, accents) are dropped.
-- The link is PIN-paired and encrypted, so nearby devices can't inject keystrokes.
-
-## Protocol (phone -> Flipper, serial characteristic 19ed82ae-ed21-4c9d-4145-228e62fe0000)
-| bytes | meaning |
+| Bytes | Meaning |
 |---|---|
-| 01 mods key | tap key (HID usage + modifier bitmask) |
-| 02 dx dy | mouse move (int8) |
-| 03 btn / 04 btn | mouse button down / up (1 L, 2 R, 4 M) |
-| 05 d | scroll (int8) |
-| 06 | release all |
-| 07 lo hi | consumer key (volume, play...) |
-| 08 len ascii... | type text |
-| 09 mods key / 0A mods key | key down / key up |
+| `01 mods key` | tap a key (HID usage ID + modifier bitmask) |
+| `02 dx dy` | mouse move (signed bytes) |
+| `03 btn` / `04 btn` | mouse button down / up (1 left, 2 right, 4 middle) |
+| `05 d` | scroll wheel (signed byte) |
+| `06` | release everything |
+| `07 lo hi` | consumer key tap (volume, play/pause…) |
+| `08 len text…` | type ASCII text |
+| `09 mods key` / `0A mods key` | key down / key up |
+
+## License
+
+MIT, see [LICENSE](LICENSE).
