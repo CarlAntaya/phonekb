@@ -19,8 +19,9 @@
   body { display: flex; flex-direction: column; height: 100dvh; }
   header { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--panel); }
   #dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); flex: none; }
-  #dot.on { background: var(--ok); }
-  #status { flex: 1; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #dot.on, .rdot.on { background: var(--ok); }
+  .rdot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); flex: none; }
+  #status { flex: 1; min-width: 0; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   button { font: inherit; color: var(--text); background: var(--key); border: 0; border-radius: 8px;
     padding: 10px 0; min-width: 0; touch-action: manipulation; user-select: none; }
   button:active, button.held { background: #3a3f4a; }
@@ -74,6 +75,27 @@
   .step .ctl { display: flex; gap: 4px; flex: none; }
   .step .ctl button { padding: 6px 9px; }
   #recBtn.on { background: var(--bad); color: #fff; }
+  /* ---- remote (macro groups) ---- */
+  #remoteBtn { padding: 8px 12px; }
+  #rpanel { display: none; position: fixed; inset: 0; z-index: 9; background: var(--bg); flex-direction: column; }
+  #rpanel.open { display: flex; }
+  #rpanel .mtop select { flex: 1; font: inherit; font-size: 16px; background: var(--panel); color: var(--text);
+    border: 1px solid #333843; border-radius: 8px; padding: 8px; min-width: 0; }
+  #rgrid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(84px, auto);
+    gap: 10px; padding: 10px; align-content: start; }
+  #rgrid .mbtn { font-size: 17px; font-weight: 600; padding: 12px 8px; border-radius: 12px; background: var(--key);
+    word-break: break-word; }
+  #rgrid .mbtn.playing { background: #2f6fb0; }
+  #rgrid .mbtn:disabled { opacity: .45; }
+  #rgrid .empty { grid-column: 1 / -1; color: var(--muted); font-size: 14px; padding: 16px 4px; text-align: center; }
+  #redit { display: none; overflow-y: auto; flex: 1; padding-bottom: 20px; }
+  #rpanel.editing #redit { display: block; }
+  #rpanel.editing #rgrid { display: none; }
+  .gitem { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #23262d; }
+  .gitem label { flex: 1; display: flex; align-items: center; gap: 10px; font-size: 16px; }
+  .gitem input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--key-active); }
+  .gitem button { padding: 6px 10px; }
+  #rEditBtn.on { background: var(--key-active); color: #111; font-weight: 600; }
   #playBtn.on { background: #2f6fb0; }
 </style>
 </head>
@@ -81,6 +103,7 @@
 <header>
   <div id="dot"></div>
   <div id="status">Not connected</div>
+  <button id="remoteBtn">Remote</button>
   <button id="macroBtn">Macros</button>
   <button id="connect">Connect</button>
 </header>
@@ -116,6 +139,29 @@
     <button id="addStep">+ Add step</button>
   </div>
   <div class="mtop"><button id="mclear" style="flex:1">Clear all steps</button></div>
+</div>
+
+<div id="rpanel">
+  <header>
+    <div id="rdot" class="rdot"></div>
+    <b style="flex:1">Remote</b>
+    <button id="rclose" style="padding:8px 16px">Done</button>
+  </header>
+  <div class="mtop">
+    <select id="rgroup"></select>
+    <button id="rEditBtn">Edit</button>
+  </div>
+  <div id="rerr" style="color: var(--bad); padding: 6px 12px 0; font-size: 13px;"></div>
+  <div id="rgrid"></div>
+  <div id="redit">
+    <div class="mtop">
+      <button id="gnew" style="flex:1">New group</button>
+      <button id="gren" style="flex:1">Rename</button>
+      <button id="gdel" style="flex:1">Delete</button>
+    </div>
+    <div class="mut" style="padding: 10px 12px 6px">Tick the macros that belong in this group. Use ▲▼ to set the button order. Make and edit the macros themselves in <b>Macros</b>.</div>
+    <div id="gitems"></div>
+  </div>
 </div>
 
 <div id="pad"><span>Touchpad<br>drag = move · tap = click · 2-finger tap = right click<br>2-finger drag = scroll · double-tap &amp; hold = drag</span></div>
@@ -209,8 +255,9 @@ let device = null, rxChar = null, connected = false, wantConnected = false;
 function setStatus(text, ok) {
   $("status").textContent = text;
   $("dot").classList.toggle("on", !!ok);
+  const rd = document.getElementById("rdot"); if (rd) rd.classList.toggle("on", !!ok);
 }
-function showErr(text) { $("err").textContent = text || ""; }
+function showErr(text) { $("err").textContent = text || ""; const r = document.getElementById("rerr"); if (r) r.textContent = text || ""; }
 
 // ---------------- connection ----------------
 async function connect() {
@@ -668,26 +715,28 @@ async function runStep(s) {
   }
   await waitIdle();
 }
-async function play() {
+let playingName = null;
+async function playMacro(name, reps = 1, mark = false) {
   if (playing) { stopPlay(); return; }
   if (!connected) { showErr("Connect to the Flipper first."); return; }
   if (recording) stopRec();
-  const list = steps(), reps = Math.max(1, Math.min(999, +$("mrep").value || 1));
-  if (!list.length) { showErr("This macro has no steps yet."); return; }
-  showErr(""); clearMods(); playing = true; stopFlag = false; showBar();
+  const list = macros[name];
+  if (!list || !list.length) { showErr(`"${name}" has no steps yet.`); return; }
+  showErr(""); clearMods(); playing = true; playingName = name; stopFlag = false; showBar(); renderRemote();
   try {
     for (let r = 0; r < reps && !stopFlag; r++) {
       for (let i = 0; i < list.length && !stopFlag && connected; i++) {
-        $("recText").textContent = `▶ Playing "${curName}": step ${i + 1}/${list.length}` + (reps > 1 ? `, run ${r + 1}/${reps}` : "");
-        markStep(i);
+        $("recText").textContent = `▶ Playing "${name}": step ${i + 1}/${list.length}` + (reps > 1 ? `, run ${r + 1}/${reps}` : "");
+        if (mark) markStep(i);
         await runStep(list[i]);
       }
     }
   } finally {
     if (stopFlag && connected) { queue = []; send(OP.RELEASE); }
-    playing = false; markStep(-1); showBar();
+    playing = false; playingName = null; markStep(-1); showBar(); renderRemote();
   }
 }
+function play() { return playMacro(curName, Math.max(1, Math.min(999, +$("mrep").value || 1)), true); }
 function stopPlay() { stopFlag = true; queue = []; }
 function markStep(i) { document.querySelectorAll(".step").forEach((el, j) => el.classList.toggle("cur", j === i)); }
 
@@ -761,11 +810,15 @@ $("mren").onclick = () => {
   const name = (prompt("Rename macro:", curName) || "").trim();
   if (!name || name === curName) return;
   if (macros[name]) { alert("A macro with that name already exists."); return; }
-  macros[name] = macros[curName]; delete macros[curName]; curName = name; save(); renderList();
+  macros[name] = macros[curName]; delete macros[curName];
+  for (const g of Object.values(groups)) { const i = g.indexOf(curName); if (i >= 0) g[i] = name; }
+  curName = name; save(); saveGroups(); renderList();
 };
 $("mdel").onclick = () => {
   if (!confirm(`Delete "${curName}"?`)) return;
   delete macros[curName];
+  for (const k of Object.keys(groups)) groups[k] = groups[k].filter((n) => n !== curName);
+  saveGroups();
   if (!Object.keys(macros).length) macros["Macro 1"] = [];
   curName = Object.keys(macros)[0]; save(); openPanel();
 };
@@ -774,6 +827,116 @@ $("addStep").onclick = () => { steps().push(NEW_STEP[$("addType").value]()); sav
 $("recBtn").onclick = () => recording ? stopRec() : startRec();
 $("recStop").onclick = () => { if (recording) stopRec(); else stopPlay(); };
 $("playBtn").onclick = play;
+
+// ================= remote: macro groups =================
+// A group is an ordered list of macro names. "All macros" is built in.
+const ALL = "All macros";
+let groups = {}, curGroup = ALL;
+try { groups = JSON.parse(localStorage.getItem("phonekb.groups") || "{}") || {}; curGroup = localStorage.getItem("phonekb.group") || ALL; } catch (e) {}
+function saveGroups() {
+  try { localStorage.setItem("phonekb.groups", JSON.stringify(groups)); localStorage.setItem("phonekb.group", curGroup); } catch (e) {}
+}
+function groupMacros(g) {
+  if (g === ALL || !groups[g]) return Object.keys(macros);
+  return groups[g].filter((n) => macros[n]);
+}
+function renderGroupList() {
+  if (curGroup !== ALL && !groups[curGroup]) curGroup = ALL;
+  const sel = $("rgroup"); sel.textContent = "";
+  sel.add(new Option(ALL, ALL));
+  for (const g of Object.keys(groups)) sel.add(new Option(g, g));
+  sel.value = curGroup;
+  $("gren").disabled = $("gdel").disabled = curGroup === ALL;
+}
+function renderRemote() {
+  if (!$("rpanel").classList.contains("open")) return;
+  $("rdot").classList.toggle("on", connected);
+  const grid = $("rgrid"); grid.textContent = "";
+  const names = groupMacros(curGroup).filter((n) => macros[n].length);
+  for (const name of names) {
+    const b = document.createElement("button");
+    b.className = "mbtn"; b.textContent = name;
+    if (playingName === name) { b.classList.add("playing"); b.textContent = "■ " + name; }
+    else if (playing || recording) b.disabled = true;
+    b.onclick = () => playMacro(name, 1);   // tapping the playing button stops it
+    grid.append(b);
+  }
+  if (!names.length) {
+    const e = document.createElement("div"); e.className = "empty";
+    e.textContent = curGroup === ALL
+      ? "No macros with steps yet. Make some in Macros, then come back."
+      : "This group is empty. Tap Edit to choose which macros go in it.";
+    grid.append(e);
+  }
+}
+function renderGroupEditor() {
+  const box = $("gitems"); box.textContent = "";
+  const isAll = curGroup === ALL;
+  if (isAll) {
+    const e = document.createElement("div"); e.className = "mut"; e.style.padding = "8px 12px";
+    e.textContent = "\"All macros\" always shows every macro. Tap New group to make your own set of buttons.";
+    box.append(e); return;
+  }
+  const members = groups[curGroup];
+  // members first (in button order), then the rest alphabetically
+  const others = Object.keys(macros).filter((n) => !members.includes(n)).sort((a, b) => a.localeCompare(b));
+  for (const name of [...members.filter((n) => macros[n]), ...others]) {
+    const inG = members.includes(name);
+    const row = document.createElement("div"); row.className = "gitem";
+    const lab = document.createElement("label");
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = inG;
+    cb.onchange = () => {
+      if (cb.checked) members.push(name); else members.splice(members.indexOf(name), 1);
+      saveGroups(); renderGroupEditor();
+    };
+    lab.append(cb, name);
+    row.append(lab);
+    if (inG) {
+      const i = members.indexOf(name);
+      const mk = (t, fn) => { const b = document.createElement("button"); b.textContent = t; b.onclick = () => { fn(); saveGroups(); renderGroupEditor(); }; row.append(b); };
+      mk("▲", () => { if (i > 0) [members[i - 1], members[i]] = [members[i], members[i - 1]]; });
+      mk("▼", () => { if (i < members.length - 1) [members[i + 1], members[i]] = [members[i], members[i + 1]]; });
+    }
+    box.append(row);
+  }
+  if (!Object.keys(macros).length) box.append("No macros yet.");
+}
+function setEditing(on) {
+  $("rpanel").classList.toggle("editing", on);
+  $("rEditBtn").classList.toggle("on", on);
+  $("rEditBtn").textContent = on ? "Done editing" : "Edit";
+  if (on) renderGroupEditor(); else renderRemote();
+}
+function openRemote() {
+  $("mpanel").classList.remove("open");
+  $("rpanel").classList.add("open");
+  renderGroupList(); setEditing(false); renderRemote();
+}
+$("remoteBtn").onclick = openRemote;
+$("rclose").onclick = () => $("rpanel").classList.remove("open");
+$("rgroup").onchange = (e) => { curGroup = e.target.value; saveGroups(); renderGroupList(); $("rpanel").classList.contains("editing") ? renderGroupEditor() : renderRemote(); };
+$("rEditBtn").onclick = () => setEditing(!$("rpanel").classList.contains("editing"));
+$("gnew").onclick = () => {
+  let n = 1; while (groups["Group " + n]) n++;
+  const name = (prompt("Name for the new group:", "Group " + n) || "").trim();
+  if (!name) return;
+  if (name === ALL || groups[name]) { alert("A group with that name already exists."); return; }
+  groups[name] = []; curGroup = name; saveGroups(); renderGroupList(); setEditing(true);
+};
+$("gren").onclick = () => {
+  if (curGroup === ALL) return;
+  const name = (prompt("Rename group:", curGroup) || "").trim();
+  if (!name || name === curGroup) return;
+  if (name === ALL || groups[name]) { alert("A group with that name already exists."); return; }
+  const next = {};
+  for (const [k, v] of Object.entries(groups)) next[k === curGroup ? name : k] = v;  // keep order
+  groups = next; curGroup = name; saveGroups(); renderGroupList();
+};
+$("gdel").onclick = () => {
+  if (curGroup === ALL) return;
+  if (!confirm(`Delete the group "${curGroup}"? The macros themselves are kept.`)) return;
+  delete groups[curGroup]; curGroup = ALL; saveGroups(); renderGroupList(); renderGroupEditor();
+};
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 // Offline support: cache the page so it opens with no internet

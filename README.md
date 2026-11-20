@@ -23,6 +23,7 @@ The computer needs **no drivers, no software and no Bluetooth**. It just sees a 
 - **Shortcuts:** Copy, Paste, Undo, Select all, Alt+Tab, Show desktop
 - **Media keys:** volume, mute, play/pause, next track
 - **Macros:** record what you do, edit the steps (keys, text, clicks, mouse moves, waits), and replay them, as many times as you like
+- **Remote:** sort macros into groups (e.g. Work, Gaming) and get a page of big buttons, one tap per macro
 - **Send a block of text:** paste a paragraph on the phone and have it typed out on the PC
 - **Works offline:** install it from Chrome and it runs with no internet
 - **Secure:** the Bluetooth link is PIN-paired and encrypted, so nearby devices can't inject keystrokes
