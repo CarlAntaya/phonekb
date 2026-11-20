@@ -646,6 +646,7 @@ function rec(step) {
   if (last && step.t === "move" && last.t === "move" && now - lastStepT < 80) { last.x += step.x; last.y += step.y; merged = true; }
   else if (last && step.t === "scroll" && last.t === "scroll" && now - lastStepT < 150) { last.n += step.n; merged = true; }
   else if (last && step.t === "text" && last.t === "text" && gap < 1500) { last.s += step.s; merged = true; }
+  else if (last && step.t === "key" && last.t === "key" && last.k === step.k && gap < 1500) { last.n = (last.n || 1) + 1; merged = true; }
   else if (last && step.t === "release" && last.t === "press" && last.b === step.b && gap < 400) { last.t = "click"; merged = true; }
   if (!merged) {
     if (gap >= 60) list.push({ t: "delay", ms: Math.round(gap / 10) * 10 });
@@ -699,7 +700,14 @@ async function runStep(s) {
       }
       break;
     }
-    case "key": { const p = parseKey(s.k); if (p) send(OP.TAP, p.m, p.k); break; }
+    case "key": {
+      const p = parseKey(s.k), n = Math.max(1, Math.min(999, Math.round(+s.n || 1)));
+      if (p) for (let i = 0; i < n && !stopFlag; i++) {
+        send(OP.TAP, p.m, p.k);
+        if (n > 1) { await waitIdle(); await wait(40); }   // small gap so apps register every press
+      }
+      break;
+    }
     case "click": send(OP.DOWN, s.b); send(OP.UP, s.b); break;
     case "press": send(OP.DOWN, s.b); break;
     case "release": send(OP.UP, s.b); break;
@@ -764,7 +772,10 @@ function renderSteps() {
       case "key": {
         const f = field("text", s.k, (v) => { s.k = v; f.style.borderColor = parseKey(v) ? "" : "var(--bad)"; }, { placeholder: "e.g. CTRL c", autocapitalize: "off", autocorrect: "off", spellcheck: false });
         if (!parseKey(s.k)) f.style.borderColor = "var(--bad)";
-        body.append(f); break;
+        const r = field("number", s.n || 1, (v) => { s.n = Math.max(1, Math.min(999, Math.round(v) || 1)); r.value = s.n; },
+          { inputMode: "numeric", min: 1, max: 999, title: "Times to press" });
+        r.style.flex = "0 0 56px";
+        body.append(f, "×", r); break;
       }
       case "click": case "press": case "release": body.append(field("select", s.b, (v) => s.b = +v, btnOpts)); break;
       case "move":
