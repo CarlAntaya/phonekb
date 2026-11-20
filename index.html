@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, interactive-widget=resizes-content">
+<meta name="theme-color" content="#111317">
+<title>Phone Keyboard for Flipper</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #111317; --panel: #1b1e24; --key: #262a32; --key-active: #ff8200;
+    --text: #e8e8ea; --muted: #8b8f98; --ok: #3ccf7a; --bad: #ff5a5a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 15px/1.3 system-ui, -apple-system, Roboto, sans-serif; overscroll-behavior: none; }
+  body { display: flex; flex-direction: column; height: 100dvh; }
+  header { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--panel); }
+  #dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); flex: none; }
+  #dot.on { background: var(--ok); }
+  #status { flex: 1; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  button { font: inherit; color: var(--text); background: var(--key); border: 0; border-radius: 8px;
+    padding: 10px 0; min-width: 0; touch-action: manipulation; user-select: none; }
+  button:active, button.held { background: #3a3f4a; }
+  button.mod.on { background: var(--key-active); color: #111; font-weight: 600; }
+  #connect { background: var(--key-active); color: #111; font-weight: 600; padding: 8px 14px; }
+  #pad { flex: 1; margin: 8px 8px 0; border-radius: 12px; background: var(--panel);
+    touch-action: none; position: relative; min-height: 120px; display: flex; align-items: center; justify-content: center; }
+  #pad span { color: #3a3f4a; font-size: 13px; text-align: center; pointer-events: none; }
+  .row { display: grid; gap: 6px; padding: 6px 8px 0; }
+  .r2 { grid-template-columns: 1fr 1fr; }
+  .r6 { grid-template-columns: repeat(6, 1fr); }
+  .r5 { grid-template-columns: repeat(5, 1fr); }
+  #typebar { display: flex; gap: 6px; padding: 8px; }
+  #kbd { flex: 1; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 8px; border: 1px solid #333843;
+    background: var(--panel); color: var(--text); }
+  #kbd:focus { outline: 2px solid var(--key-active); }
+  #more { display: none; }
+  #more.open { display: block; }
+  textarea { width: 100%; height: 80px; font: inherit; background: var(--panel); color: var(--text);
+    border: 1px solid #333843; border-radius: 8px; padding: 8px; }
+  .settings { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 8px 10px; color: var(--muted); font-size: 13px; align-items: center; }
+  .settings input[type=range] { width: 110px; }
+  #err { color: var(--bad); padding: 0 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <div id="dot"></div>
+  <div id="status">Not connected</div>
+  <button id="connect">Connect</button>
+</header>
+<div id="err"></div>
+
+<div id="pad"><span>Touchpad<br>drag = move · tap = click · 2-finger tap = right click<br>2-finger drag = scroll · double-tap &amp; hold = drag</span></div>
+
+<div class="row r2">
+  <button data-mouse="1">Left</button>
+  <button data-mouse="2">Right</button>
+</div>
+
+<div class="row r6">
+  <button class="mod" data-mod="1">Ctrl</button>
+  <button class="mod" data-mod="4">Alt</button>
+  <button class="mod" data-mod="8">Win</button>
+  <button class="mod" data-mod="2">Shift</button>
+  <button data-key="41">Esc</button>
+  <button data-key="43">Tab</button>
+</div>
+<div class="row r6">
+  <button data-key="80">←</button>
+  <button data-key="82">↑</button>
+  <button data-key="81">↓</button>
+  <button data-key="79">→</button>
+  <button data-key="76">Del</button>
+  <button id="moreBtn">⋯</button>
+</div>
+
+<div id="more">
+  <div class="row r6">
+    <button data-key="74">Home</button>
+    <button data-key="77">End</button>
+    <button data-key="75">PgUp</button>
+    <button data-key="78">PgDn</button>
+    <button data-key="70">PrtSc</button>
+    <button data-combo="5,76">C-A-Del</button>
+  </div>
+  <div class="row r6" id="fkeys"></div>
+  <div class="row r5">
+    <button data-consumer="234">Vol −</button>
+    <button data-consumer="233">Vol +</button>
+    <button data-consumer="226">Mute</button>
+    <button data-consumer="205">⏯</button>
+    <button data-consumer="181">⏭</button>
+  </div>
+  <div class="row r6">
+    <button data-combo="1,6">Copy</button>
+    <button data-combo="1,25">Paste</button>
+    <button data-combo="1,29">Undo</button>
+    <button data-combo="1,4">Sel all</button>
+    <button data-combo="4,43">Alt-Tab</button>
+    <button data-combo="8,7">Desk</button>
+  </div>
+  <div style="padding: 8px 8px 0">
+    <textarea id="bulk" placeholder="Paste a block of text here, then tap Send text (ASCII only)"></textarea>
+    <div class="row r2" style="padding: 6px 0 0">
+      <button id="sendBulk">Send text</button>
+      <button id="stopBulk">Stop</button>
+    </div>
+  </div>
+  <div class="settings">
+    <label>Speed <input id="speed" type="range" min="0.5" max="4" step="0.1" value="1.6"></label>
+    <label>Scroll <input id="scrollSpeed" type="range" min="0.2" max="3" step="0.1" value="1"></label>
+    <label><input id="raw" type="checkbox"> No autocorrect</label>
+  </div>
+</div>
+
+<div id="typebar">
+  <input id="kbd" type="text" placeholder="Tap here to type on the PC" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="enter">
+  <button data-key="42" style="padding: 0 14px">⌫</button>
+  <button data-key="40" style="padding: 0 14px">⏎</button>
+</div>
+
+<script>
+"use strict";
+// ---- Flipper serial GATT (same UUIDs as the Flipper firmware) ----
+const SERVICE = "8fe5b3d5-2e7f-4a98-2a48-7acc60fe0000";
+const RX_CHAR = "19ed82ae-ed21-4c9d-4145-228e62fe0000"; // phone -> Flipper
+
+// ---- protocol opcodes (must match phone_kb.c) ----
+const OP = { TAP: 1, MOVE: 2, DOWN: 3, UP: 4, SCROLL: 5, RELEASE: 6, CONSUMER: 7, TEXT: 8, KDOWN: 9, KUP: 10 };
+const KEY = { ENTER: 0x28, BKSP: 0x2A, TAB: 0x2B, SPACE: 0x2C };
+
+const $ = (id) => document.getElementById(id);
+let device = null, rxChar = null, connected = false, wantConnected = false;
+
+function setStatus(text, ok) {
+  $("status").textContent = text;
+  $("dot").classList.toggle("on", !!ok);
+}
+function showErr(text) { $("err").textContent = text || ""; }
+
+// ---------------- connection ----------------
+async function connect() {
+  showErr("");
+  if (!navigator.bluetooth) {
+    showErr("Web Bluetooth isn't available. Open this page in Chrome on Android, over https://.");
+    return;
+  }
+  try {
+    if (!device) {
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: "PhoneKB" }],
+        optionalServices: [SERVICE],
+      });
+      device.addEventListener("gattserverdisconnected", onDisconnected);
+    }
+    wantConnected = true;
+    await openGatt();
+  } catch (e) {
+    if (e.name !== "NotFoundError") showErr(String(e.message || e)); // NotFound = user cancelled picker
+    setStatus("Not connected", false);
+  }
+}
+
+async function openGatt() {
+  setStatus("Connecting to " + device.name + "…", false);
+  const server = await device.gatt.connect();
+  const svc = await server.getPrimaryService(SERVICE);
+  rxChar = await svc.getCharacteristic(RX_CHAR);
+  // First write needs an encrypted, bonded link. Android shows its pairing
+  // dialog here: type the 6-digit PIN that appears on the Flipper's screen.
+  setStatus("Pairing… enter the PIN shown on the Flipper", false);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await rxChar.writeValueWithResponse(new Uint8Array([OP.RELEASE]));
+      connected = true;
+      break;
+    } catch (e) {
+      if (attempt === 2) throw new Error("Pairing failed. Check the PIN, then tap Connect again. (" + e.message + ")");
+      await sleep(2500);
+    }
+  }
+  setStatus("Connected: " + device.name, true);
+  $("connect").textContent = "Disconnect";
+  pump();
+}
+
+function onDisconnected() {
+  connected = false; rxChar = null;
+  setStatus("Disconnected", false);
+  $("connect").textContent = "Connect";
+  if (wantConnected) {
+    setStatus("Reconnecting…", false);
+    setTimeout(() => { if (wantConnected && !connected) openGatt().catch((e) => { setStatus("Not connected", false); showErr(e.message); }); }, 1000);
+  }
+}
+
+$("connect").onclick = () => {
+  if (connected) { wantConnected = false; device.gatt.disconnect(); }
+  else connect();
+};
+
+// ---------------- send queue ----------------
+// Web Bluetooth allows one GATT op at a time, so everything is queued and
+// coalesced; mouse motion is accumulated between writes for smoothness.
+let queue = [];             // bytes waiting
+let moveX = 0, moveY = 0, scrollAcc = 0;
+let pumping = false;
+const MAX_WRITE = 180;
+
+function send(...bytes) { queue.push(...bytes); pump(); }
+
+function flushMotion() {
+  while (moveX !== 0 || moveY !== 0) {
+    const dx = Math.max(-127, Math.min(127, Math.trunc(moveX)));
+    const dy = Math.max(-127, Math.min(127, Math.trunc(moveY)));
+    if (dx === 0 && dy === 0) break;
+    queue.push(OP.MOVE, dx & 0xFF, dy & 0xFF);
+    moveX -= dx; moveY -= dy;
+  }
+  const s = Math.trunc(scrollAcc);
+  if (s !== 0) { const c = Math.max(-127, Math.min(127, s)); queue.push(OP.SCROLL, c & 0xFF); scrollAcc -= c; }
+}
+
+async function pump() {
+  if (pumping || !connected) return;
+  pumping = true;
+  try {
+    for (;;) {
+      flushMotion();
+      if (!queue.length) break;
+      const chunk = queue.splice(0, MAX_WRITE);
+      await rxChar.writeValueWithResponse(new Uint8Array(chunk));
+    }
+  } catch (e) {
+    showErr("Send failed: " + e.message);
+  } finally {
+    pumping = false;
+  }
+}
+
+// ---------------- keys / modifiers ----------------
+let mods = 0;
+function clearMods() {
+  mods = 0;
+  document.querySelectorAll("button.mod").forEach((b) => b.classList.remove("on"));
+}
+function tap(key, extraMods = 0) {
+  send(OP.TAP, (mods | extraMods) & 0xFF, key);
+  if (mods) clearMods();
+}
+
+document.querySelectorAll("button.mod").forEach((b) => {
+  b.onclick = () => { mods ^= +b.dataset.mod; b.classList.toggle("on", !!(mods & +b.dataset.mod)); };
+});
+document.querySelectorAll("button[data-key]").forEach((b) => {
+  b.onclick = () => tap(+b.dataset.key);
+});
+document.querySelectorAll("button[data-combo]").forEach((b) => {
+  b.onclick = () => { const [m, k] = b.dataset.combo.split(",").map(Number); tap(k, m); };
+});
+document.querySelectorAll("button[data-consumer]").forEach((b) => {
+  b.onclick = () => { const c = +b.dataset.consumer; send(OP.CONSUMER, c & 0xFF, c >> 8); };
+});
+for (let i = 1; i <= 12; i++) {
+  const b = document.createElement("button");
+  b.textContent = "F" + i;
+  b.onclick = () => tap(0x39 + i);
+  $("fkeys").appendChild(b);
+}
+$("moreBtn").onclick = () => $("more").classList.toggle("open");
+
+// Character -> HID usage (US layout), used only when a modifier is armed
+function charToKey(ch) {
+  const c = ch.toLowerCase();
+  if (c >= "a" && c <= "z") return 0x04 + c.charCodeAt(0) - 97;
+  if (c >= "1" && c <= "9") return 0x1E + c.charCodeAt(0) - 49;
+  const map = { "0": 0x27, " ": 0x2C, "-": 0x2D, "=": 0x2E, "[": 0x2F, "]": 0x30, "\\": 0x31,
+    ";": 0x33, "'": 0x34, "`": 0x35, ",": 0x36, ".": 0x37, "/": 0x38, "\n": 0x28, "\t": 0x2B };
+  return map[c] || 0;
+}
+
+// Normalise phone-keyboard characters to plain ASCII
+function toAscii(s) {
+  return s.replace(/[‘’‚′]/g, "'").replace(/[“”„″]/g, '"')
+    .replace(/[–—−]/g, "-").replace(/…/g, "...").replace(/ /g, " ")
+    .replace(/[^\x09\x0A\x20-\x7E]/g, "");
+}
+
+function typeText(s) {
+  s = toAscii(s);
+  if (!s) return;
+  if (mods) {                          // e.g. Ctrl armed + "c" => Ctrl+C
+    for (const ch of s) { const k = charToKey(ch); if (k) tap(k); }
+    return;
+  }
+  const bytes = [...s].map((c) => c.charCodeAt(0));
+  for (let i = 0; i < bytes.length; i += 200) {
+    const part = bytes.slice(i, i + 200);
+    send(OP.TEXT, part.length, ...part);
+  }
+}
+
+// ---------------- phone keyboard capture ----------------
+// Android keyboards (Gboard, Samsung) don't send real key events; they edit the
+// text field. So we keep a hidden "shadow" value and diff it after every
+// change: removed chars => Backspace, added chars => typed text.
+const kbd = $("kbd");
+const PAD = "​​​​​​​​"; // lets Backspace work on an "empty" field
+let shadow = PAD, composing = false;
+kbd.value = PAD;
+
+function resetField() {
+  shadow = PAD; kbd.value = PAD;
+  try { kbd.setSelectionRange(PAD.length, PAD.length); } catch (e) {}
+}
+
+function diffAndSend() {
+  const now = kbd.value;
+  const a = [...shadow], b = [...now];
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  const removed = a.length - i;
+  const added = b.slice(i).join("").replace(/​/g, "");
+  for (let k = 0; k < removed; k++) tap(KEY.BKSP);
+  if (added) typeText(added);
+  shadow = now;
+  if (!composing && (now.length > 60 || !now.startsWith(PAD.slice(0, 2)))) resetField();
+}
+
+kbd.addEventListener("compositionstart", () => { composing = true; });
+kbd.addEventListener("compositionend", () => { composing = false; diffAndSend(); });
+kbd.addEventListener("input", diffAndSend);
+kbd.addEventListener("keydown", (e) => {
+  // Enter and a few hardware-style keys do arrive as real key events
+  if (e.key === "Enter") { e.preventDefault(); tap(KEY.ENTER); resetField(); }
+  else if (e.key === "Tab") { e.preventDefault(); tap(KEY.TAB); }
+  else if (e.key === "Backspace" && kbd.value.length === 0) { e.preventDefault(); tap(KEY.BKSP); resetField(); }
+});
+kbd.addEventListener("focus", () => setTimeout(() => kbd.setSelectionRange(kbd.value.length, kbd.value.length), 0));
+
+$("raw").onchange = (e) => {
+  // "visible-password" style input disables suggestions/autocorrect on most Android keyboards
+  kbd.type = e.target.checked ? "password" : "text";
+  resetField(); kbd.focus();
+};
+
+// ---------------- bulk text ----------------
+let bulkCancel = false;
+$("sendBulk").onclick = async () => {
+  const text = toAscii($("bulk").value);
+  bulkCancel = false;
+  for (let i = 0; i < text.length && !bulkCancel; i += 100) {
+    typeText(text.slice(i, i + 100));
+    setStatus(`Typing ${Math.min(i + 100, text.length)}/${text.length}…`, connected);
+    await sleep(100 * 6); // Flipper types roughly 150-250 chars/sec over USB
+  }
+  if (connected) setStatus("Connected: " + device.name, true);
+};
+$("stopBulk").onclick = () => { bulkCancel = true; queue = []; send(OP.RELEASE); };
+
+// ---------------- mouse buttons ----------------
+document.querySelectorAll("button[data-mouse]").forEach((b) => {
+  const btn = +b.dataset.mouse;
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); b.classList.add("held"); send(OP.DOWN, btn); });
+  const up = () => { if (b.classList.contains("held")) { b.classList.remove("held"); send(OP.UP, btn); } };
+  b.addEventListener("pointerup", up); b.addEventListener("pointercancel", up); b.addEventListener("pointerleave", up);
+});
+
+// ---------------- touchpad ----------------
+const pad = $("pad");
+const pts = new Map();          // pointerId -> {x, y, sx, sy, t}
+let gesture = null;             // null | "move" | "scroll"
+let maxFingers = 0, downTime = 0, moved = false, dragging = false, lastTapTime = 0;
+
+function speed() { return +$("speed").value; }
+
+pad.addEventListener("pointerdown", (e) => {
+  pad.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
+  if (pts.size === 1) {
+    downTime = performance.now(); moved = false; maxFingers = 1; gesture = "move";
+    // tap then quickly touch again and hold => drag (left button held)
+    if (downTime - lastTapTime < 300) { dragging = true; send(OP.DOWN, 1); }
+  } else {
+    maxFingers = Math.max(maxFingers, pts.size); gesture = "scroll";
+  }
+});
+
+pad.addEventListener("pointermove", (e) => {
+  const p = pts.get(e.pointerId);
+  if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (Math.hypot(p.x - p.sx, p.y - p.sy) > 8) moved = true;
+  if (gesture === "move" && pts.size === 1) {
+    const v = Math.hypot(dx, dy);
+    const gain = speed() * (1 + Math.min(v, 40) / 12);   // simple acceleration curve
+    moveX += dx * gain; moveY += dy * gain;
+    pump();
+  } else if (gesture === "scroll") {
+    // average of fingers; natural direction like a phone (drag up = scroll down)
+    scrollAcc += (-dy / pts.size) * 0.08 * +$("scrollSpeed").value;
+    pump();
+  }
+});
+
+function endPointer(e) {
+  if (!pts.has(e.pointerId)) return;
+  pts.delete(e.pointerId);
+  if (pts.size > 0) return;
+  const dur = performance.now() - downTime;
+  if (dragging) { dragging = false; send(OP.UP, 1); }
+  else if (!moved && dur < 250) {
+    if (maxFingers >= 2) { send(OP.DOWN, 2); send(OP.UP, 2); }
+    else { send(OP.DOWN, 1); send(OP.UP, 1); lastTapTime = performance.now(); }
+  }
+  gesture = null;
+}
+pad.addEventListener("pointerup", endPointer);
+pad.addEventListener("pointercancel", endPointer);
+
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+// Offline support: cache the page so it opens with no internet
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+window.addEventListener("pagehide", () => { if (connected) device.gatt.disconnect(); });
+</script>
+</body>
+</html>
