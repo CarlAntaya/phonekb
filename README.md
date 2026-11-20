@@ -116,8 +116,4 @@ The Flipper app swaps the Flipper's Bluetooth profile for its own, which uses th
 
 ## License
 
-Copyright (c) 2026 CarlAntaya. All rights reserved.
-
-You're welcome to download and use this for your own personal use. Modifying, redistributing or reusing the code requires permission. See [LICENSE](LICENSE).
-
-Found a bug or have an idea? Please [open an issue](https://github.com/CarlAntaya/phonekb/issues).
+MIT, see [LICENSE](LICENSE).
