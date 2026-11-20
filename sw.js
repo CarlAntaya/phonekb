@@ -1,5 +1,5 @@
 // Offline cache for Phone Keyboard. Bump VERSION when you change any file.
-const VERSION = "phonekb-v8";
+const VERSION = "phonekb-v9";
 const FILES = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -18,7 +18,8 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   e.respondWith(
-    fetch(e.request)
+    // no-cache: always check GitHub for a newer copy (cheap: 304 if unchanged)
+    fetch(e.request, { cache: "no-cache" })
       .then((res) => {
         const copy = res.clone();
         caches.open(VERSION).then((c) => c.put(e.request, copy));
