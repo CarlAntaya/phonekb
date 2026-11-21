@@ -11,8 +11,6 @@ The computer needs **no drivers, no software and no Bluetooth**. It just sees a 
 
 **Open the phone controller:** https://carlantaya.github.io/phonekb/
 
-> **Also in this repo:** a [USB ⇄ Bluetooth serial bridge](serial/README.md) that passes text both ways between a PC's serial port and your phone. Phone terminal: https://carlantaya.github.io/phonekb/serial/
-
 ![Main screen, extra keys, and the macro editor](docs/screenshots.png)
 
 ## Features
