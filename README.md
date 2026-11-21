@@ -31,7 +31,7 @@ The computer needs **no drivers, no software and no Bluetooth**. It just sees a 
 
 ## Requirements
 
-- Flipper Zero running **[Momentum firmware](https://momentum-fw.dev/)** (see the table below)
+- Flipper Zero running **Official, Momentum, Unleashed or RogueMaster** firmware (see the table below)
 - Android phone with **Chrome** (iPhone isn't supported: iOS browsers don't have Web Bluetooth)
 - A USB-C cable from the Flipper to the computer
 
@@ -39,13 +39,18 @@ The computer needs **no drivers, no software and no Bluetooth**. It just sees a 
 
 ### 1. Install the Flipper app
 
-Check your firmware version on the Flipper under **Settings → System Info**, then download the matching file:
+Check your firmware and version on the Flipper under **Settings → System Info** (or *About*), then download the matching file:
 
-| Momentum version | Download |
-|---|---|
-| mntm-012 | [phone_kb_mntm-012.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_mntm-012.fap) |
-| mntm-010, mntm-011 | [phone_kb_mntm-010_011.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_mntm-010_011.fap) |
-| mntm-007 | [phone_kb_mntm-007.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_mntm-007.fap) |
+| Firmware | Version | Download |
+|---|---|---|
+| **Official** (Flipper Devices) | 1.5.1 | [phone_kb_ofw-1.5.1.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_ofw-1.5.1.fap) |
+| **Momentum** | mntm-012 | [phone_kb_mntm-012.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_mntm-012.fap) |
+| Momentum | mntm-010, mntm-011 | [phone_kb_mntm-010_011.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_mntm-010_011.fap) |
+| Momentum | mntm-007 | [phone_kb_mntm-007.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_mntm-007.fap) |
+| **Unleashed** | unlshd-095 | [phone_kb_unlshd-095.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_unlshd-095.fap) |
+| **RogueMaster** | builds from Nov 2026 | [phone_kb_roguemaster-2026-11.fap](https://github.com/CarlAntaya/phonekb/raw/main/release/phone_kb_roguemaster-2026-11.fap) |
+
+Running something else, or an older or newer version? Try the file for the same firmware family first. If the Flipper says "App Too New" or "App Too Old", see *Building from source* below, or open an issue.
 
 Copy the file to the Flipper's SD card in **`apps/USB/`**. Any of these ways works:
 - **qFlipper** on a PC (File Manager → SD Card → apps → USB)
@@ -91,7 +96,9 @@ The Flipper app is in [`flipper_app/`](flipper_app). With [ufbt](https://github.
 
 ```sh
 pip install ufbt
-ufbt update --index-url=https://up.momentum-fw.dev/firmware/directory.json
+ufbt update                   # Official firmware SDK
+# or, for Momentum:
+# ufbt update --index-url=https://up.momentum-fw.dev/firmware/directory.json
 cd flipper_app && ufbt        # output: dist/phone_kb.fap
 ```
 
