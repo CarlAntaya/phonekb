@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, interactive-widget=resizes-content">
+<meta name="theme-color" content="#111317">
+<title>Flipper Serial Terminal</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #111317; --panel: #1b1e24; --key: #262a32; --accent: #ff8200;
+    --text: #e8e8ea; --muted: #8b8f98; --ok: #3ccf7a; --bad: #ff5a5a; --sent: #6cb6ff;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 15px/1.3 system-ui, -apple-system, Roboto, sans-serif; overscroll-behavior: none; }
+  body { display: flex; flex-direction: column; height: 100dvh; }
+  header { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--panel); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); flex: none; }
+  .dot.on { background: var(--ok); }
+  #status { flex: 1; min-width: 0; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  button, select { font: inherit; color: var(--text); background: var(--key); border: 0; border-radius: 8px;
+    padding: 9px 12px; min-width: 0; touch-action: manipulation; user-select: none; }
+  button:active { background: #3a3f4a; }
+  button.on { background: var(--accent); color: #111; font-weight: 600; }
+  #connect { background: var(--accent); color: #111; font-weight: 600; }
+  #sub { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 13px; color: var(--muted); }
+  #sub .sp { flex: 1; }
+  #err { color: var(--bad); padding: 0 12px; font-size: 13px; }
+  #log { flex: 1; margin: 0 8px; padding: 8px 10px; border-radius: 10px; background: #0b0c0f; overflow-y: auto;
+    font: 13px/1.35 ui-monospace, "Roboto Mono", Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all;
+    user-select: text; -webkit-user-select: text; }
+  #log .tx { color: var(--sent); }
+  #log .sys { color: var(--muted); font-style: italic; }
+  #log:empty::before { content: "Text from the PC shows up here."; color: #5b616d; }
+  #jump { display: none; position: fixed; right: 18px; bottom: 170px; padding: 6px 12px; background: var(--accent); color: #111; }
+  #jump.show { display: block; }
+  .tools { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px 0; }
+  .tools button, .tools select { padding: 7px 10px; font-size: 13px; flex: none; }
+  #sendbar { display: flex; gap: 6px; padding: 8px; }
+  #msg { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 8px; border: 1px solid #333843;
+    background: var(--panel); color: var(--text); }
+  #msg:focus { outline: 2px solid var(--accent); }
+  #send { background: var(--accent); color: #111; font-weight: 600; }
+  #more { display: none; padding: 0 8px; }
+  #more.open { display: block; }
+  #block { width: 100%; height: 90px; font: 13px ui-monospace, monospace; background: var(--panel); color: var(--text);
+    border: 1px solid #333843; border-radius: 8px; padding: 8px; margin-top: 6px; }
+  .row { display: flex; gap: 6px; align-items: center; padding-top: 6px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .help { font-size: 12px; color: var(--muted); padding: 6px 2px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="dot" id="dot"></div>
+  <div id="status">Not connected</div>
+  <button id="connect">Connect</button>
+</header>
+<div id="sub">
+  <div class="dot" id="pcdot"></div><span id="pc">PC port: unknown</span>
+  <span class="sp"></span>
+  <span id="counts">↓0 ↑0</span>
+</div>
+<div id="err"></div>
+<div id="log"></div>
+<button id="jump">↓ Latest</button>
+<div class="tools">
+  <select id="eol" title="Line ending added when you press Send">
+    <option value="">No EOL</option>
+    <option value="\n" selected>LF</option>
+    <option value="\r">CR</option>
+    <option value="\r\n">CR+LF</option>
+  </select>
+  <button id="ctrlc" title="Send Ctrl+C (0x03)">Ctrl+C</button>
+  <button id="hex">Hex</button>
+  <button id="echo" class="on">Echo</button>
+  <button id="ts">Time</button>
+  <button id="copy">Copy</button>
+  <button id="save">Save</button>
+  <button id="clear">Clear</button>
+  <button id="moreBtn">⋯</button>
+</div>
+<div id="more">
+  <textarea id="block" placeholder="Paste a block of text to send exactly (each line ends with the chosen line ending)"></textarea>
+  <div class="row">
+    <button id="sendBlock">Send block</button>
+    <label><input type="checkbox" id="hexIn"> type hex bytes (e.g. 48 65 0D 0A)</label>
+  </div>
+  <div class="help">
+    On the PC, open the Flipper's serial port in any terminal (PuTTY, Arduino Serial Monitor, <code>screen</code>, Python pyserial).
+    Baud rate doesn't matter. The PC program has to keep the port open to receive what you send.
+  </div>
+</div>
+<div id="sendbar">
+  <input id="msg" type="text" placeholder="Type a message for the PC" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="send">
+  <button id="send">Send</button>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+// Flipper serial GATT service (same UUIDs as the Flipper's own serial service)
+const SERVICE   = "8fe5b3d5-2e7f-4a98-2a48-7acc60fe0000";
+const TX_CHAR   = "19ed82ae-ed21-4c9d-4145-228e61fe0000"; // Flipper -> phone (indicate)
+const RX_CHAR   = "19ed82ae-ed21-4c9d-4145-228e62fe0000"; // phone -> Flipper (write)
+const FLOW_CHAR = "19ed82ae-ed21-4c9d-4145-228e63fe0000"; // free buffer space on Flipper (notify)
+
+// Packet types (must match bt_serial.c)
+const P_DATA = 1, P_HELLO = 2, P_PROBE = 2, P_SIZE = 3, P_STATUS = 3;
+const MAX_WRITE = 180;
+
+let device = null, rxChar = null, txChar = null, flowChar = null;
+let connected = false, ready = false, wantConnected = false, connecting = false;
+let credits = 0, creditWaiter = null;
+let rxCount = 0, txCount = 0;
+
+// ---------------- settings ----------------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("fst." + k); return v === null ? d : JSON.parse(v); } catch (_) { return d; } },
+  set(k, v) { try { localStorage.setItem("fst." + k, JSON.stringify(v)); } catch (_) {} },
+};
+const opts = { hex: store.get("hex", false), echo: store.get("echo", true), ts: store.get("ts", false), eol: store.get("eol", "\n") };
+function syncOpts() {
+  $("hex").classList.toggle("on", opts.hex);
+  $("echo").classList.toggle("on", opts.echo);
+  $("ts").classList.toggle("on", opts.ts);
+  $("eol").value = opts.eol;
+  for (const k in opts) store.set(k, opts[k]);
+}
+$("hex").onclick = () => { opts.hex = !opts.hex; atLineStart = true; syncOpts(); };
+$("echo").onclick = () => { opts.echo = !opts.echo; syncOpts(); };
+$("ts").onclick = () => { opts.ts = !opts.ts; syncOpts(); };
+$("eol").onchange = () => { opts.eol = $("eol").value; syncOpts(); };
+$("eol").querySelectorAll("option").forEach((o) => { o.value = o.value.replace(/\\n/g, "\n").replace(/\\r/g, "\r"); });
+syncOpts();
+
+// ---------------- status ----------------
+function setStatus(text, ok) { $("status").textContent = text; $("dot").classList.toggle("on", !!ok); }
+function showErr(text) { $("err").textContent = text || ""; }
+function setPc(open) {
+  $("pc").textContent = open === null ? "PC port: unknown" : open ? "PC port: open" : "PC port: closed (nothing is listening)";
+  $("pcdot").classList.toggle("on", !!open);
+}
+function updateCounts() { $("counts").textContent = "↓" + rxCount + " ↑" + txCount; }
+
+// ---------------- log view ----------------
+const log = $("log");
+const MAX_LOG = 200000;          // characters kept on screen
+let pending = [];                // [cls, text] waiting for next frame
+let atLineStart = true, lastCR = false, lastCls = null;
+let followTail = true;
+const decoder = new TextDecoder("utf-8", { fatal: false });
+
+log.addEventListener("scroll", () => {
+  followTail = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+  $("jump").classList.toggle("show", !followTail);
+});
+$("jump").onclick = () => { followTail = true; log.scrollTop = log.scrollHeight; $("jump").classList.remove("show"); };
+
+function stamp() {
+  const d = new Date();
+  return "[" + d.toTimeString().slice(0, 8) + "." + String(d.getMilliseconds()).padStart(3, "0") + "] ";
+}
+
+// Turns raw text into display text: CR, LF and CR+LF all become a new line,
+// other control characters are hidden. Adds timestamps at line starts.
+function shape(text, cls) {
+  let out = "";
+  if (cls !== lastCls && !atLineStart) { out += "\n"; atLineStart = true; }
+  lastCls = cls;
+  for (const ch of text) {
+    if (ch === "\n" && lastCR) { lastCR = false; continue; }
+    lastCR = ch === "\r";
+    if (ch === "\r" || ch === "\n") { out += "\n"; atLineStart = true; continue; }
+    const c = ch.codePointAt(0);
+    if (c < 32 && ch !== "\t") continue;
+    if (c === 127) continue;
+    if (atLineStart && opts.ts) out += stamp();
+    atLineStart = false;
+    out += ch;
+  }
+  return out;
+}
+
+function hexOf(bytes) {
+  let s = "";
+  for (const b of bytes) s += b.toString(16).padStart(2, "0").toUpperCase() + " ";
+  return s;
+}
+
+function addBytes(bytes, cls) {
+  let text;
+  if (opts.hex) {
+    text = (opts.ts && atLineStart ? stamp() : "") + hexOf(bytes);
+    if (cls !== lastCls && !atLineStart) text = "\n" + text;
+    atLineStart = false; lastCls = cls;
+  } else {
+    text = shape(cls === "rx" ? decoder.decode(bytes, { stream: true }) : new TextDecoder().decode(bytes), cls);
+  }
+  if (text) queueText(cls, text);
+}
+function sysLine(text) {
+  queueText("sys", (atLineStart ? "" : "\n") + "— " + text + " —\n");
+  atLineStart = true; lastCls = "sys";
+}
+
+function queueText(cls, text) {
+  if (!pending.length) requestAnimationFrame(flushLog);
+  pending.push([cls, text]);
+}
+let logLen = 0;
+function flushLog() {
+  for (const [cls, text] of pending) {
+    const last = log.lastChild;
+    if (last && last.className === cls) last.textContent += text;
+    else {
+      const span = document.createElement("span");
+      span.className = cls; span.textContent = text;
+      log.appendChild(span);
+    }
+    logLen += text.length;
+  }
+  pending = [];
+  // keep memory bounded: drop the oldest text
+  while (logLen > MAX_LOG && log.firstChild) {
+    const f = log.firstChild, extra = logLen - MAX_LOG * 0.8;
+    if (f.textContent.length <= extra) { logLen -= f.textContent.length; log.removeChild(f); }
+    else { f.textContent = f.textContent.slice(extra); logLen -= extra; break; }
+  }
+  if (followTail) log.scrollTop = log.scrollHeight;
+}
+
+$("clear").onclick = () => { log.textContent = ""; logLen = 0; atLineStart = true; lastCls = null; };
+$("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText(log.textContent); sysLine("copied"); }
+  catch (e) { showErr("Copy failed: " + e.message); }
+};
+$("save").onclick = () => {
+  const blob = new Blob([log.textContent], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "flipper-serial-" + new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19) + ".txt";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
+$("moreBtn").onclick = () => { $("more").classList.toggle("open"); $("moreBtn").classList.toggle("on"); };
+
+// ---------------- connection ----------------
+async function connect() {
+  showErr("");
+  if (!navigator.bluetooth) {
+    showErr("Web Bluetooth isn't available. Open this page in Chrome on Android, over https://.");
+    return;
+  }
+  try {
+    if (!device) {
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: "SerialBT" }],
+        optionalServices: [SERVICE],
+      });
+      device.addEventListener("gattserverdisconnected", onDisconnected);
+    }
+    wantConnected = true;
+    await openGatt();
+  } catch (e) {
+    if (e.name !== "NotFoundError") showErr(String(e.message || e)); // NotFound = picker cancelled
+    setStatus("Not connected", false);
+  }
+}
+
+async function openGatt() {
+  if (connecting) return;
+  connecting = true;
+  try { await openGattOnce(); }
+  catch (e) { wantConnected = false; try { device.gatt.disconnect(); } catch (_) {} throw e; }
+  finally { connecting = false; }
+}
+
+async function openGattOnce() {
+  setStatus("Connecting to " + device.name + "…", false);
+  const server = await device.gatt.connect();
+  const svc = await server.getPrimaryService(SERVICE);
+  rxChar = await svc.getCharacteristic(RX_CHAR);
+  txChar = await svc.getCharacteristic(TX_CHAR);
+  flowChar = await svc.getCharacteristic(FLOW_CHAR);
+
+  // The first secured read needs an encrypted, bonded link. Android shows its
+  // pairing dialog here: type the 6-digit PIN that appears on the Flipper.
+  setStatus("Pairing… enter the PIN shown on the Flipper", false);
+  let flow = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try { flow = await flowChar.readValue(); break; }
+    catch (e) {
+      if (attempt === 7 || !device.gatt.connected) throw new Error("Pairing failed. Check the PIN, then tap Connect again. (" + e.message + ")");
+      await sleep(/in progress/i.test(e.message) ? 1500 : 4000);
+    }
+  }
+  credits = flow.getUint32(0, false);
+
+  flowChar.addEventListener("characteristicvaluechanged", onFlow);
+  txChar.addEventListener("characteristicvaluechanged", onTx);
+  await withRetry(() => flowChar.startNotifications());
+  await withRetry(() => txChar.startNotifications());
+
+  connected = true;
+  $("connect").textContent = "Disconnect";
+  setStatus("Starting session…", false);
+  await sendFrame([P_HELLO]); // Flipper answers with a PROBE packet
+}
+
+async function withRetry(fn) {
+  for (let i = 0; ; i++) {
+    try { return await fn(); }
+    catch (e) { if (i >= 4 || !device.gatt.connected) throw e; await sleep(700); }
+  }
+}
+
+function onFlow(ev) {
+  credits = ev.target.value.getUint32(0, false);
+  if (creditWaiter) { const w = creditWaiter; creditWaiter = null; w(); }
+}
+
+function onTx(ev) {
+  const v = new Uint8Array(ev.target.value.buffer, ev.target.value.byteOffset, ev.target.value.byteLength);
+  if (!v.length) return;
+  const type = v[0];
+  if (type === P_DATA) {
+    const data = v.slice(1);
+    rxCount += data.length; updateCounts();
+    addBytes(data, "rx");
+  } else if (type === P_PROBE && v.length > 1 && !ready) {
+    // Tell the Flipper how much of the 243-byte probe arrived; that's the
+    // biggest packet this connection can carry.
+    sendFrame([P_SIZE, Math.min(255, v.length)]).then(() => {
+      ready = true;
+      setStatus("Connected: " + device.name, true);
+      sysLine("connected to " + device.name);
+      pump();
+    }).catch((e) => showErr(e.message));
+  } else if (type === P_STATUS && v.length > 1) {
+    setPc(!!(v[1] & 1));
+  }
+}
+
+function onDisconnected() {
+  const was = ready;
+  connected = false; ready = false; rxChar = txChar = flowChar = null;
+  if (creditWaiter) { const w = creditWaiter; creditWaiter = null; w(); }
+  setStatus("Disconnected", false);
+  setPc(null);
+  $("connect").textContent = "Connect";
+  if (was) sysLine("disconnected");
+  if (wantConnected) {
+    setStatus("Reconnecting…", false);
+    setTimeout(() => {
+      if (wantConnected && !connected) openGatt().catch((e) => { setStatus("Not connected", false); showErr(e.message); });
+    }, 1000);
+  }
+}
+
+$("connect").onclick = () => {
+  if (connected) { wantConnected = false; device.gatt.disconnect(); }
+  else connect();
+};
+
+// ---------------- sending ----------------
+// The Flipper hands out "credits" (free buffer bytes). Every write uses
+// credits equal to its length; at zero we wait until the Flipper has passed
+// the data on to the PC and notifies a fresh batch.
+let gattBusy = Promise.resolve();
+function sendFrame(bytes) {
+  const job = gattBusy.then(async () => {
+    while (connected && credits < bytes.length) {
+      if (credits > 0) await rxChar.writeValueWithResponse(new Uint8Array([P_DATA])).then(() => credits--); // burn the leftover
+      else {
+        const got = await new Promise((r) => { creditWaiter = () => r(true); setTimeout(() => r(false), 3000); });
+        creditWaiter = null;
+        if (!got && connected && credits <= 0) {
+          // missed a notification? fall back to the advertised buffer size
+          try { credits = (await flowChar.readValue()).getUint32(0, false); } catch (_) {}
+        }
+      }
+    }
+    if (!connected) throw new Error("Not connected");
+    await rxChar.writeValueWithResponse(new Uint8Array(bytes));
+    credits -= bytes.length;
+  });
+  gattBusy = job.catch(() => {});
+  return job;
+}
+
+let queue = [], pumping = false;
+function send(bytes) {
+  if (!ready) { showErr("Not connected yet."); return false; }
+  for (const b of bytes) queue.push(b);
+  pump();
+  return true;
+}
+async function pump() {
+  if (pumping || !ready) return;
+  pumping = true;
+  try {
+    while (queue.length && ready) {
+      const n = Math.min(queue.length, MAX_WRITE - 1, Math.max(1, credits - 1));
+      const chunk = queue.splice(0, n);
+      await sendFrame([P_DATA, ...chunk]);
+      txCount += chunk.length; updateCounts();
+    }
+  } catch (e) {
+    showErr("Send failed: " + e.message);
+  } finally {
+    pumping = false;
+  }
+}
+
+const enc = new TextEncoder();
+function sendText(text) {
+  const bytes = enc.encode(text);
+  if (send(bytes) && opts.echo) addBytes(bytes, "tx");
+}
+
+$("send").onclick = () => {
+  const t = $("msg").value;
+  sendText(t + opts.eol);
+  $("msg").value = "";
+  $("msg").focus();
+};
+$("msg").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); $("send").click(); }
+});
+$("ctrlc").onclick = () => { if (send([3]) && opts.echo) sysLine("Ctrl+C"); };
+$("sendBlock").onclick = () => {
+  const raw = $("block").value;
+  if ($("hexIn").checked) {
+    const parts = raw.replace(/0x/gi, " ").split(/[\s,]+/).filter(Boolean);
+    const bytes = [];
+    for (const p of parts) {
+      if (!/^[0-9a-f]{1,2}$/i.test(p)) { showErr("Not a hex byte: " + p); return; }
+      bytes.push(parseInt(p, 16));
+    }
+    if (send(bytes) && opts.echo) addBytes(new Uint8Array(bytes), "tx");
+  } else {
+    sendText(raw.replace(/\r\n|\r|\n/g, opts.eol || "\n") + opts.eol);
+  }
+};
+
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+// Offline support: cache the page so it opens with no internet
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+window.addEventListener("pagehide", () => { if (device && device.gatt.connected) device.gatt.disconnect(); });
+</script>
+</body>
+</html>
