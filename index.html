@@ -14,6 +14,10 @@
     --text: #e8e8ea; --muted: #8b8f98; --ok: #3ccf7a; --bad: #ff5a5a;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  /* No text selection / long-press menus anywhere except real text fields */
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overflow-x: hidden; }
+  input, textarea, select { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+  html { overflow-x: hidden; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font: 15px/1.3 system-ui, -apple-system, Roboto, sans-serif; overscroll-behavior: none; }
   body { display: flex; flex-direction: column; height: 100dvh; }
@@ -567,6 +571,10 @@ function setLock(on) {
   $("lock").textContent = on ? "Holding…" : "Hold click";
 }
 $("lock").onclick = () => setLock(!leftLocked);
+
+// Long-press on the touchpad must never open the phone's copy/search menu
+pad.addEventListener("contextmenu", (e) => e.preventDefault());
+pad.addEventListener("selectstart", (e) => e.preventDefault());
 
 pad.addEventListener("pointerdown", (e) => {
   pad.setPointerCapture(e.pointerId);
