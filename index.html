@@ -62,6 +62,10 @@
   #xlist { flex: 1; overflow-y: auto; padding-bottom: 12px; }
   #xlist h4 { margin: 14px 12px 4px; color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
   #xlist .gitem small { color: var(--muted); margin-left: auto; padding-left: 8px; }
+  .xname { padding: 8px 12px 0; border-top: 1px solid #23262d; }
+  .xname label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .xname div { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .xname input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px; border-radius: 8px; border: 1px solid #333843; background: var(--panel); color: var(--text); }
   #xgo { margin: 8px; padding: 14px; background: var(--key-active); color: #111; font-weight: 600; }
   #xgo:disabled { opacity: .4; }
   #mpanel { display: none; position: fixed; inset: 0; z-index: 10; background: var(--bg); overflow-y: auto; padding-bottom: 40px; }
@@ -165,6 +169,10 @@
     <button id="xnone" style="flex:1">Select none</button>
   </div>
   <div id="xlist"></div>
+  <div class="xname">
+    <label for="xfile">File name</label>
+    <div><input id="xfile" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done"><span>.json</span></div>
+  </div>
   <button id="xgo">Export</button>
 </div>
 
@@ -993,20 +1001,36 @@ function saveFile(file) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 function stamp() { const d = new Date(), z = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`; }
+// Turn whatever the user typed into a safe file name ending in .json
+function cleanFileName(n, fallback) {
+  n = String(n || "").replace(/\.json$/i, "").replace(/[\\/:*?"<>|\x00-\x1f]+/g, "-").replace(/^[\s.]+|[\s.]+$/g, "").slice(0, 80);
+  return (n || fallback) + ".json";
+}
 function safeName(n) { return n.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "macro"; }
 
 $("mexpAll").onclick = () => {
   const withSteps = Object.keys(macros).filter((n) => macros[n].length);
   if (!withSteps.length) { alert("There are no macros with steps to export yet."); return; }
-  downloadJson({ app: "phonekb", version: 1, macros, groups }, `phonekb-macros-${stamp()}.json`);
+  const def = `phonekb-macros-${stamp()}`;
+  const name = prompt("Name the export file:", def);
+  if (name === null) return;                      // cancelled
+  downloadJson({ app: "phonekb", version: 1, macros, groups }, cleanFileName(name, def));
 };
 // ---- export selected: pick macros (and optionally Remote groups) ----
-let xMacros = new Set(), xGroups = new Set();
+let xMacros = new Set(), xGroups = new Set(), xNameEdited = false;
+function suggestedName() {
+  const only = [...xMacros];
+  if (only.length === 1 && !xGroups.size) return `phonekb-${safeName(only[0])}`;
+  if (xGroups.size === 1 && only.length) return `phonekb-${safeName([...xGroups][0])}`;
+  return `phonekb-macros-${stamp()}`;
+}
+$("xfile").addEventListener("input", () => { xNameEdited = true; });
 function openExportPicker() {
   const names = Object.keys(macros).filter((n) => macros[n].length);
   if (!names.length) { alert("There are no macros with steps to export yet."); return; }
   xMacros = new Set(macros[curName] && macros[curName].length ? [curName] : []);
   xGroups = new Set();
+  xNameEdited = false;
   renderExportPicker();
   $("xpanel").classList.add("open");
 }
@@ -1043,6 +1067,7 @@ function renderExportPicker() {
 function updateExportButton() {
   const n = xMacros.size, g = [...xGroups].length;
   $("xgo").disabled = n === 0;
+  if (!xNameEdited) $("xfile").value = suggestedName();
   $("xgo").textContent = n === 0 ? "Select macros to export"
     : `Export ${n} macro${n > 1 ? "s" : ""}` + (g ? ` + ${g} group${g > 1 ? "s" : ""}` : "");
 }
@@ -1059,8 +1084,7 @@ $("xgo").onclick = () => {
   const outM = {}, outG = {};
   for (const n of Object.keys(macros)) if (xMacros.has(n)) outM[n] = macros[n];
   for (const g of xGroups) { if (groups[g]) { const m = groups[g].filter((n) => xMacros.has(n)); if (m.length) outG[g] = m; } }
-  const only = Object.keys(outM);
-  const fname = only.length === 1 && !Object.keys(outG).length ? `phonekb-${safeName(only[0])}.json` : `phonekb-macros-${stamp()}.json`;
+  const fname = cleanFileName($("xfile").value, suggestedName());
   $("xpanel").classList.remove("open");
   downloadJson({ app: "phonekb", version: 1, macros: outM, groups: outG }, fname);
 };
