@@ -325,7 +325,23 @@ let connecting = false;
 async function openGatt() {
   if (connecting) return;           // a connect is already running (e.g. auto-reconnect)
   connecting = true;
-  try { await openGattOnce(); }
+  try {
+    // Android often drops a brand-new link a moment after connecting
+    // ("GATT Server is disconnected", "Connection failed"…). Retry quietly
+    // a few times before bothering the user.
+    for (let attempt = 1; ; attempt++) {
+      try { await openGattOnce(); return; }
+      catch (e) {
+        const pinProblem = /^Pairing failed/.test(e.message);
+        if (pinProblem || !wantConnected) throw e;
+        if (attempt >= 4) throw new Error("Couldn't connect after 4 tries. Make sure Phone Keyboard is open on the Flipper and nothing else is connected to it, then tap Connect again. (" + e.message + ")");
+        try { device.gatt.disconnect(); } catch (_) {}
+        setStatus(`Connecting… (retry ${attempt})`, false);
+        await sleep(600 * attempt);
+        if (!wantConnected) throw e;          // user tapped Disconnect meanwhile
+      }
+    }
+  }
   catch (e) { wantConnected = false; try { device.gatt.disconnect(); } catch (_) {} throw e; }  // start clean next time
   finally { connecting = false; }
 }
@@ -333,6 +349,8 @@ async function openGatt() {
 async function openGattOnce() {
   setStatus("Connecting to " + device.name + "…", false);
   const server = await device.gatt.connect();
+  await sleep(400);                        // let Android settle the new link before discovery
+  if (!device.gatt.connected) throw new Error("Link dropped right after connecting");
   const svc = await server.getPrimaryService(SERVICE);
   rxChar = await svc.getCharacteristic(RX_CHAR);
   // First write needs an encrypted, bonded link. Android shows its pairing
@@ -346,7 +364,8 @@ async function openGattOnce() {
       connected = true;
       break;
     } catch (e) {
-      if (attempt === 7 || !device.gatt.connected) throw new Error("Pairing failed. Check the PIN, then tap Connect again. (" + e.message + ")");
+      if (!device.gatt.connected) throw new Error("Link dropped while pairing (" + e.message + ")");   // retried by openGatt
+      if (attempt === 7) throw new Error("Pairing failed. Check the PIN, then tap Connect again. (" + e.message + ")");
       await sleep(/in progress/i.test(e.message) ? 1500 : 4000);
     }
   }
@@ -368,7 +387,8 @@ function onDisconnected() {
 
 $("connect").onclick = () => {
   if (connected) { wantConnected = false; device.gatt.disconnect(); }
-  else if (!connecting) connect();
+  else if (connecting) { wantConnected = false; try { device.gatt.disconnect(); } catch (_) {} setStatus("Cancelled", false); }
+  else connect();
 };
 
 // ---------------- send queue ----------------
