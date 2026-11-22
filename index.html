@@ -57,6 +57,13 @@
   #recbar.play { background: #14304a; }
   #recbar span { flex: 1; }
   #recbar button { padding: 6px 14px; }
+  #xpanel { display: none; position: fixed; inset: 0; z-index: 11; background: var(--bg); flex-direction: column; }
+  #xpanel.open { display: flex; }
+  #xlist { flex: 1; overflow-y: auto; padding-bottom: 12px; }
+  #xlist h4 { margin: 14px 12px 4px; color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  #xlist .gitem small { color: var(--muted); margin-left: auto; padding-left: 8px; }
+  #xgo { margin: 8px; padding: 14px; background: var(--key-active); color: #111; font-weight: 600; }
+  #xgo:disabled { opacity: .4; }
   #mpanel { display: none; position: fixed; inset: 0; z-index: 10; background: var(--bg); overflow-y: auto; padding-bottom: 40px; }
   #mpanel.open { display: block; }
   #mpanel header { position: sticky; top: 0; z-index: 1; }
@@ -142,10 +149,23 @@
   <div class="mut" style="padding: 18px 10px 0">Move macros to another phone: <b>Export</b> saves them to a file you can send yourself (Drive, email, messages). On the other phone, open this page and tap <b>Import</b>.</div>
   <div class="mtop">
     <button id="mexpAll" style="flex:1">Export all</button>
-    <button id="mexpOne" style="flex:1">Export one</button>
+    <button id="mexpSel" style="flex:1">Export selected</button>
     <button id="mimp" style="flex:1">Import</button>
   </div>
   <input id="mimpFile" type="file" accept=".json,application/json,text/plain" hidden>
+</div>
+
+<div id="xpanel">
+  <header>
+    <b style="flex:1">Export selected</b>
+    <button id="xcancel" style="padding:8px 16px">Cancel</button>
+  </header>
+  <div class="mtop">
+    <button id="xall" style="flex:1">Select all</button>
+    <button id="xnone" style="flex:1">Select none</button>
+  </div>
+  <div id="xlist"></div>
+  <button id="xgo">Export</button>
 </div>
 
 <div id="rpanel">
@@ -980,9 +1000,69 @@ $("mexpAll").onclick = () => {
   if (!withSteps.length) { alert("There are no macros with steps to export yet."); return; }
   downloadJson({ app: "phonekb", version: 1, macros, groups }, `phonekb-macros-${stamp()}.json`);
 };
-$("mexpOne").onclick = () => {
-  if (!steps().length) { alert("This macro has no steps yet."); return; }
-  downloadJson({ app: "phonekb", version: 1, macros: { [curName]: steps() }, groups: {} }, `phonekb-${safeName(curName)}.json`);
+// ---- export selected: pick macros (and optionally Remote groups) ----
+let xMacros = new Set(), xGroups = new Set();
+function openExportPicker() {
+  const names = Object.keys(macros).filter((n) => macros[n].length);
+  if (!names.length) { alert("There are no macros with steps to export yet."); return; }
+  xMacros = new Set(macros[curName] && macros[curName].length ? [curName] : []);
+  xGroups = new Set();
+  renderExportPicker();
+  $("xpanel").classList.add("open");
+}
+function renderExportPicker() {
+  const box = $("xlist"); box.textContent = "";
+  const names = Object.keys(macros).filter((n) => macros[n].length);
+  const row = (label, checked, onchange, note) => {
+    const r = document.createElement("div"); r.className = "gitem";
+    const l = document.createElement("label");
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = checked; cb.onchange = () => onchange(cb.checked);
+    l.append(cb, label);
+    if (note) { const sm = document.createElement("small"); sm.textContent = note; l.append(sm); }
+    r.append(l); box.append(r);
+  };
+  const gnames = Object.keys(groups).filter((g) => groups[g].some((n) => macros[n] && macros[n].length));
+  if (gnames.length) {
+    const h = document.createElement("h4"); h.textContent = "Remote groups"; box.append(h);
+    for (const g of gnames) {
+      const members = groups[g].filter((n) => macros[n] && macros[n].length);
+      row(g, xGroups.has(g), (on) => {
+        if (on) { xGroups.add(g); members.forEach((n) => xMacros.add(n)); }
+        else { xGroups.delete(g); members.forEach((n) => xMacros.delete(n)); }
+        renderExportPicker();
+      }, `${members.length} macro${members.length > 1 ? "s" : ""}`);
+    }
+  }
+  const h = document.createElement("h4"); h.textContent = "Macros"; box.append(h);
+  for (const n of names) {
+    const st = macros[n];
+    row(n, xMacros.has(n), (on) => { on ? xMacros.add(n) : xMacros.delete(n); updateExportButton(); }, `${st.length} step${st.length > 1 ? "s" : ""}`);
+  }
+  updateExportButton();
+}
+function updateExportButton() {
+  const n = xMacros.size, g = [...xGroups].length;
+  $("xgo").disabled = n === 0;
+  $("xgo").textContent = n === 0 ? "Select macros to export"
+    : `Export ${n} macro${n > 1 ? "s" : ""}` + (g ? ` + ${g} group${g > 1 ? "s" : ""}` : "");
+}
+$("mexpSel").onclick = openExportPicker;
+$("xcancel").onclick = () => $("xpanel").classList.remove("open");
+$("xall").onclick = () => {
+  Object.keys(macros).filter((n) => macros[n].length).forEach((n) => xMacros.add(n));
+  Object.keys(groups).forEach((g) => xGroups.add(g));
+  renderExportPicker();
+};
+$("xnone").onclick = () => { xMacros.clear(); xGroups.clear(); renderExportPicker(); };
+$("xgo").onclick = () => {
+  if (!xMacros.size) return;
+  const outM = {}, outG = {};
+  for (const n of Object.keys(macros)) if (xMacros.has(n)) outM[n] = macros[n];
+  for (const g of xGroups) { if (groups[g]) { const m = groups[g].filter((n) => xMacros.has(n)); if (m.length) outG[g] = m; } }
+  const only = Object.keys(outM);
+  const fname = only.length === 1 && !Object.keys(outG).length ? `phonekb-${safeName(only[0])}.json` : `phonekb-macros-${stamp()}.json`;
+  $("xpanel").classList.remove("open");
+  downloadJson({ app: "phonekb", version: 1, macros: outM, groups: outG }, fname);
 };
 $("mimp").onclick = () => { $("mimpFile").value = ""; $("mimpFile").click(); };
 $("mimpFile").onchange = async (e) => {
