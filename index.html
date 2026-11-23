@@ -61,6 +61,21 @@
   #recbar.play { background: #14304a; }
   #recbar span { flex: 1; }
   #recbar button { padding: 6px 14px; }
+  .mpick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 10px 12px; text-align: left;
+    background: var(--panel); border: 1px solid #333843; }
+  .mpick span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mpick .caret { color: var(--muted); }
+  #ppanel { display: none; position: fixed; inset: 0; z-index: 12; background: var(--bg); flex-direction: column; }
+  #ppanel.open { display: flex; }
+  #psearch { margin: 8px; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 8px; border: 1px solid #333843;
+    background: var(--panel); color: var(--text); }
+  #plist { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+  #plist button { display: flex; width: 100%; align-items: center; gap: 8px; text-align: left; background: none; border-radius: 0;
+    padding: 14px 14px; border-bottom: 1px solid #23262d; font-size: 16px; }
+  #plist button span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #plist button small { color: var(--muted); font-size: 12px; }
+  #plist button.cur { color: var(--key-active); font-weight: 600; }
+  #plist .none { color: var(--muted); padding: 16px; text-align: center; }
   #xpanel { display: none; position: fixed; inset: 0; z-index: 11; background: var(--bg); flex-direction: column; }
   #xpanel.open { display: flex; }
   #xlist { flex: 1; overflow-y: auto; padding-bottom: 12px; }
@@ -128,7 +143,7 @@
 <div id="mpanel">
   <header><b style="flex:1">Macros</b><button id="mclose" style="padding:8px 16px">Done</button></header>
   <div class="mtop">
-    <select id="mlist" style="flex:1"></select>
+    <button id="mlist" class="mpick"><span id="mlistName"></span><span class="caret">▾</span></button>
     <button id="mnew">New</button><button id="mren">Rename</button><button id="mdel">Delete</button>
   </div>
   <div class="mtop">
@@ -161,6 +176,12 @@
     <button id="mimp" style="flex:1">Import</button>
   </div>
   <input id="mimpFile" type="file" accept=".json,application/json,text/plain" hidden>
+</div>
+
+<div id="ppanel">
+  <header><b style="flex:1">Choose a macro</b><button id="pclose" style="padding:8px 16px">Close</button></header>
+  <input id="psearch" type="search" placeholder="Search macros" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+  <div id="plist"></div>
 </div>
 
 <div id="xpanel">
@@ -859,10 +880,34 @@ function renderSteps() {
   if (!steps().length) { const e = document.createElement("div"); e.className = "mtop mut"; e.style.paddingBottom = "8px"; e.textContent = "No steps yet. Tap Record, or add steps one at a time below."; box.append(e); }
 }
 function renderList() {
-  const sel = $("mlist"); sel.textContent = "";
-  for (const n of Object.keys(macros)) sel.add(new Option(n, n));
-  sel.value = curName;
+  $("mlistName").textContent = curName;
+  if ($("ppanel").classList.contains("open")) renderPicker();
 }
+// Macro picker: full-screen, scrollable, searchable (the phone's own dropdown
+// can't be resized and covers the whole screen once there are many macros)
+function renderPicker() {
+  const q = $("psearch").value.trim().toLowerCase();
+  const box = $("plist"); box.textContent = "";
+  const names = Object.keys(macros).filter((n) => !q || n.toLowerCase().includes(q));
+  for (const n of names) {
+    const b = document.createElement("button");
+    if (n === curName) b.className = "cur";
+    const t = document.createElement("span"); t.textContent = n;
+    const c = document.createElement("small"); const k = macros[n].length; c.textContent = k ? `${k} step${k > 1 ? "s" : ""}` : "empty";
+    b.append(t, c);
+    b.onclick = () => { curName = n; save(); closePicker(); renderList(); renderSteps(); };
+    box.append(b);
+  }
+  if (!names.length) { const d = document.createElement("div"); d.className = "none"; d.textContent = "No macros match."; box.append(d); }
+}
+function openPicker() {
+  $("psearch").value = "";
+  $("ppanel").classList.add("open");
+  renderPicker();
+  const cur = $("plist").querySelector(".cur");
+  if (cur) cur.scrollIntoView({ block: "center" });
+}
+function closePicker() { $("ppanel").classList.remove("open"); }
 function openPanel() { renderList(); renderSteps(); showBar(); $("mpanel").classList.add("open"); }
 
 const NEW_STEP = { text: () => ({ t: "text", s: "" }), key: () => ({ t: "key", k: "ENTER" }), click: () => ({ t: "click", b: 1 }),
@@ -872,7 +917,9 @@ const NEW_STEP = { text: () => ({ t: "text", s: "" }), key: () => ({ t: "key", k
 
 $("macroBtn").onclick = openPanel;
 $("mclose").onclick = () => $("mpanel").classList.remove("open");
-$("mlist").onchange = (e) => { curName = e.target.value; save(); renderSteps(); };
+$("mlist").onclick = openPicker;
+$("pclose").onclick = closePicker;
+$("psearch").addEventListener("input", renderPicker);
 $("mnew").onclick = () => {
   let n = 1; while (macros["Macro " + n]) n++;
   const name = (prompt("Name for the new macro:", "Macro " + n) || "").trim();
