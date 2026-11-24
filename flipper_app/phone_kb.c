@@ -30,10 +30,10 @@
 
 #include "phone_kb_profile.h"
 
-#define TAG              "PhoneKB"
-#define KEYS_PATH        APP_DATA_PATH(".phone_kb.keys")
-#define RX_BUF_SIZE      2048
-#define CHUNK_SIZE       128
+#define TAG               "PhoneKB"
+#define KEYS_PATH         APP_DATA_PATH(".phone_kb.keys")
+#define RX_BUF_SIZE       2048
+#define CHUNK_SIZE        128
 #define TYPE_KEY_DELAY_MS 2
 
 typedef enum {
@@ -75,7 +75,8 @@ static uint16_t phone_kb_serial_cb(SerialServiceEvent event, void* context) {
     PhoneKb* app = context;
     if(event.event == SerialServiceEventTypeDataReceived) {
         size_t sent = furi_stream_buffer_send(app->rx, event.data.buffer, event.data.size, 0);
-        if(sent != event.data.size) FURI_LOG_W(TAG, "RX overflow, dropped %u", event.data.size - sent);
+        if(sent != event.data.size)
+            FURI_LOG_W(TAG, "RX overflow, dropped %u", event.data.size - sent);
         return furi_stream_buffer_spaces_available(app->rx);
     }
     return 0;
@@ -195,7 +196,8 @@ static void execute_packet(PhoneKb* app, const uint8_t* p) {
         break;
     }
     case OpText:
-        for(uint8_t i = 0; i < p[1]; i++) type_char(app, p[2 + i]);
+        for(uint8_t i = 0; i < p[1]; i++)
+            type_char(app, p[2 + i]);
         remember_text(app, &p[2], p[1]);
         view_port_update(app->view_port);
         break;
@@ -224,10 +226,12 @@ static void draw_cb(Canvas* canvas, void* context) {
     canvas_draw_str(canvas, 2, 10, "Phone Keyboard");
 
     canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str(canvas, 2, 21, app->ble_connected ? "Phone: connected" : "Phone: waiting...");
     canvas_draw_str(
-        canvas, 2, 21, app->ble_connected ? "Phone: connected" : "Phone: waiting...");
-    canvas_draw_str(
-        canvas, 2, 31, furi_hal_hid_is_connected() ? "PC (USB): connected" : "PC (USB): plug in cable");
+        canvas,
+        2,
+        31,
+        furi_hal_hid_is_connected() ? "PC (USB): connected" : "PC (USB): plug in cable");
 
     char buf[32];
     snprintf(buf, sizeof(buf), "Keys sent: %lu", app->keys_sent);
