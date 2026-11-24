@@ -221,20 +221,22 @@ static void draw_cb(Canvas* canvas, void* context) {
     PhoneKb* app = context;
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
-    canvas_draw_str(canvas, 2, 11, "Phone Keyboard");
+    canvas_draw_str(canvas, 2, 10, "Phone Keyboard");
 
     canvas_set_font(canvas, FontSecondary);
     canvas_draw_str(
-        canvas, 2, 24, app->ble_connected ? "Phone: connected" : "Phone: waiting...");
+        canvas, 2, 21, app->ble_connected ? "Phone: connected" : "Phone: waiting...");
     canvas_draw_str(
-        canvas, 2, 35, furi_hal_hid_is_connected() ? "PC (USB): connected" : "PC (USB): plug in cable");
+        canvas, 2, 31, furi_hal_hid_is_connected() ? "PC (USB): connected" : "PC (USB): plug in cable");
 
     char buf[32];
     snprintf(buf, sizeof(buf), "Keys sent: %lu", app->keys_sent);
-    canvas_draw_str(canvas, 2, 46, buf);
-    canvas_draw_str(canvas, 2, 56, app->last_text);
+    canvas_draw_str(canvas, 2, 41, buf);
+    canvas_draw_str(canvas, 2, 51, app->last_text);
 
-    canvas_draw_str(canvas, 70, 64, "Hold < unpair");
+    // baseline 61 leaves room for descenders on the 64 px screen
+    canvas_draw_str(canvas, 2, 61, "Back: exit");
+    canvas_draw_str(canvas, 70, 61, "Hold <: unpair");
 }
 
 static void input_cb(InputEvent* event, void* context) {

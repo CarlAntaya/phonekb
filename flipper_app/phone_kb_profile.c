@@ -33,6 +33,7 @@ static void ble_profile_phone_kb_stop(FuriHalBleProfileBase* profile) {
     ble_svc_battery_stop(p->battery_svc);
     ble_svc_dev_info_stop(p->dev_info_svc);
     ble_svc_serial_stop(p->serial_svc);
+    free(p); // allocated in ble_profile_phone_kb_start
 }
 
 // 7.5 ms .. 45 ms connection interval: low latency for mouse movement
